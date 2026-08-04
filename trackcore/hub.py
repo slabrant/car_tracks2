@@ -285,6 +285,20 @@ class Hub:
     # -- construction helpers --------------------------------------------
 
     @staticmethod
+    def uniform(angles_deg: list[float], port_distance: float,
+                corner_radius: float = 0.0) -> "Hub":
+        """A hub with every arm the same length.
+
+        Phase 4 uses this rather than `auto` so junctions land on the layout
+        grid: an arm reaching exactly half a module means a junction substitutes
+        for one straight in both directions. `validate` still rejects a port
+        distance too short for its armpits, so the grid cannot silently produce
+        a broken piece.
+        """
+        angles = sorted(math.radians(a) % TAU for a in angles_deg)
+        return Hub(tuple(Arm(a, port_distance) for a in angles), corner_radius)
+
+    @staticmethod
     def auto(angles_deg: list[float], corner_radius: float = 0.0,
              config: TrackConfig = DEFAULT, margin: float = 2.0) -> "Hub":
         """Build a hub with each arm just long enough for its armpits.

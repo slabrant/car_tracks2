@@ -55,7 +55,8 @@ def build_part(name: str, collection, connectors: bool = True, **kwargs):
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a track part")
-    parser.add_argument("--part", default="straight", choices=CATALOGUE)
+    parser.add_argument("--part", default="straight_full",
+                        choices=sorted(set(CATALOGUE) | {"s_bend"}))
     parser.add_argument("--all", action="store_true", help="build every part")
     parser.add_argument("--outdir", default="out")
     parser.add_argument("--format", default="stl", choices=["stl", "3mf"])
@@ -72,14 +73,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def kwargs_for(name: str, args: argparse.Namespace) -> dict:
-    mapping = {
-        "straight": {"length": args.length},
-        "curve": {"radius": args.radius, "angle_deg": args.angle,
-                  "bank_deg": args.bank},
-        "ramp": {"run": args.run, "rise": args.rise},
-        "s_bend": {"radius": args.radius, "angle_deg": args.angle},
-    }
-    chosen = mapping.get(name, {"corner_radius": args.corner_radius})
+    """Overrides by part family, so the catalogue can grow without edits here."""
+    if name.startswith("straight"):
+        chosen = {"length": args.length}
+    elif name.startswith("curve") or name == "s_bend":
+        chosen = {"radius": args.radius, "angle_deg": args.angle,
+                  "bank_deg": args.bank}
+    elif name.startswith("ramp"):
+        chosen = {"run": args.run, "rise": args.rise}
+    else:
+        chosen = {"corner_radius": args.corner_radius}
+    if name == "s_bend":
+        chosen.pop("bank_deg", None)
     return {k: v for k, v in chosen.items() if v is not None}
 
 

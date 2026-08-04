@@ -1,9 +1,9 @@
 # Car Tracks 2 — Specification
 
-Status: **Phases 0–3 complete.** The joint is calibrated against printed parts;
-swept pieces and junctions build, validate and export, and every port of every
-part mates with every other. Phase 4 (the part set) and Phase 5 (supports) not
-started. See §10.
+Status: **Phases 0–4 complete.** The joint is calibrated against printed parts;
+swept pieces and junctions build, validate and export; every port of every part
+mates with every other; and the part set is laid out on a grid so loops close.
+Phase 5 (supports) not started. See §10.
 
 This document is the contract. If an implementation disagrees with it, the
 implementation is wrong. If this document is wrong, fix this document first,
@@ -1098,9 +1098,42 @@ claims with one policy.
 No foot part — a support turned over is one. Tests 9.27–9.32. Output: a bridge
 that stands up on legs made of ordinary track.
 
-**Phase 4 — the part set.** Ramps, banked curves, a family of radii, angles and
-junction sizes. **No new geometry code** — only new part data. If Phase 4
-requires editing `sweep.py` or `hub.py`, an earlier phase was wrong.
+**Phase 4 — the part set.** ✅ **COMPLETE**
+
+Fourteen parts on a **layout grid**, `module = 96 mm`: three straights (full,
+half, quarter), four curves (90°, 45°, tight 90° at half radius, banked 90°),
+a ramp, and six junctions (X, T, Y, each square and filleted).
+
+The grid is the point. A 90° curve of radius `module` advances exactly one
+module on each axis and turns a right angle, so it tiles with the straights. A
+junction's arms reach half a module, so passing through one consumes exactly
+the distance of the straight it replaces. Loops therefore close instead of
+almost closing — tested on five different loops. Two caveats worth stating
+rather than discovering: 45° curves only land on the grid **in pairs**, and a
+120° Y cannot tile a square grid at all. It is in the set because a three-way
+with interchangeable ports is worth having.
+
+`Grid` is one dataclass; changing `module` moves the whole set.
+
+**No geometry code was added**, but Phase 4 did find a rule Phase 1 missed, now
+in `path.DEFAULT_PORT_CLEAR`:
+
+> **The cross-section must not roll, or pitch, inside a lap zone.**
+
+The connector's cut tools are flat boxes aligned to the port frame (§6.6). A
+banked 90° curve had reached six degrees of bank where the notches bite, so
+they sliced the tilted section at the wrong height on each rail and the piece
+came out **genus 3**. Horizontal curvature is harmless — it moves the section
+sideways, not in z, and a notch removes everything below the lap plane whatever
+its lateral position. Roll and vertical curvature are not.
+
+Two fixes, and only one of them touched code. `Arc` now holds its bank flat over
+each lap zone before easing in. The ramp instead gets **flat lead-ins** and is
+pure part data: a smoothstep's vertical curvature is greatest at its ends,
+exactly where the connector reaches, so each port sits on a straight. `run`
+still measures the whole piece, so the set still tiles.
+
+Every part fits a 220 mm bed; the longest is the ramp at 192 mm.
 
 ---
 
@@ -1113,10 +1146,10 @@ affected section changes.
   an arm opening. Justification: cars are hand-pushed, so there is no speed to
   fly off at, and commercial track does the same. A `threshold_height` parameter
   is reserved but defaults to 0 and is not implemented in Phases 0–3.
-- **A2. Layouts are freeform; junction port distance is not constrained to tile
-  a grid.** `port_distance` is derived from `corner_radius` plus the connector
-  clearance. If grid tiling turns out to matter, it is imposed in Phase 4 by
-  choosing straight lengths to suit, not by changing §5.
+- ~~**A2. Layouts are freeform.**~~ **Overruled in Phase 4.** The set is laid
+  out on a grid: see §10 Phase 4. `Hub.auto` still derives the minimum port
+  distance and is what the tests use; the catalogue uses `Hub.uniform` to pin
+  arms to half a module instead.
 - **A3. Junction arms are straight.** Curvature comes from attaching a curve
   piece to a port.
 

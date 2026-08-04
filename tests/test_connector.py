@@ -100,7 +100,7 @@ def test_the_two_notches_between_them_cut_the_centreline_slot():
 def test_a_straight_is_congruent_to_itself_flipped():
     """Rotate the whole piece 180° about its long axis. A gendered connector,
     or one asymmetric in z, fails here."""
-    piece = build("straight", DEFAULT, length=84.0)
+    piece = build("straight_full", DEFAULT, length=84.0)
     flip = _flip_about(math.pi / 2.0)
     for group in (piece.solids, piece.cuts, piece.additions):
         assert _pool(group) == _pool([m.transformed(flip) for m in group])
@@ -265,9 +265,9 @@ def test_every_port_of_every_part_carries_identical_geometry(name):
 
 
 def test_a_curve_and_a_junction_present_the_same_port():
-    curve_piece = build("curve", DEFAULT)
+    curve_piece = build("curve_90", DEFAULT)
     hub_piece = build("x_junction", DEFAULT)
-    curve_frames = port_matrices(PATHS["curve"]())
+    curve_frames = port_matrices(PATHS["curve_90"]())
     hub_frames = HUBS["x_junction"]().port_matrices()
 
     a = _pool([m.transformed(np.linalg.inv(curve_frames[0]))
@@ -340,7 +340,7 @@ def test_opposite_arms_of_a_t_carry_collinear_track():
 
 def test_a_piece_too_short_for_two_joints_is_rejected():
     with pytest.raises(ValueError, match="notches would meet"):
-        build("straight", DEFAULT, length=12.0)
+        build("straight_full", DEFAULT, length=12.0)
 
 
 def test_connector_config_guards_fire():

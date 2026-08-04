@@ -131,8 +131,11 @@ def _fit_centre(arc) -> np.ndarray:
 
 
 def test_a_bigger_fillet_pushes_the_ports_further_out():
-    small = x_junction(6.0).arms[0].port_distance
-    large = x_junction(25.0).arms[0].port_distance
+    """True of Hub.auto, which derives the reach. The catalogue instead pins
+    port distance to the layout grid (Hub.uniform), and `validate` rejects a
+    fillet too big for it rather than silently growing the piece."""
+    small = Hub.auto([0.0, 90.0, 180.0, 270.0], 6.0).arms[0].port_distance
+    large = Hub.auto([0.0, 90.0, 180.0, 270.0], 25.0).arms[0].port_distance
     assert large > small
 
 

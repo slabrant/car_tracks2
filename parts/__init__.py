@@ -1,51 +1,105 @@
-"""Part definitions. docs/SPEC.md §8.
+"""The part set. docs/SPEC.md §8, §10 Phase 4.
 
-A part is data, not code. Construction A parts are a path; Construction B parts
-are an arm layout. If adding a part requires editing `sweep.py` or `hub.py`,
-the construction is wrong.
+A part is data, not code. Everything here is a path or an arm layout; if adding
+one required editing `sweep.py`, `hub.py` or `connector.py`, an earlier phase
+was wrong. Nothing in this file computes geometry.
+
+The set is built on a **layout grid** so that loops close. See `Grid`.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
+from functools import partial
 from typing import Callable
 
 from trackcore import (DEFAULT, Arc, Hub, Line, Path, Piece, Ramp, TrackConfig,
                        applied, port_matrices, sweep)
 from trackcore.connector import validate as validate_connector
+from trackcore.path import DEFAULT_PORT_CLEAR
 
 PathBuilder = Callable[..., Path]
 HubBuilder = Callable[..., Hub]
 
-ROUNDED = 12.0
-"""Default fillet radius, mm. A car turning through the corner follows it."""
+
+@dataclass(frozen=True)
+class Grid:
+    """The layout module. Change `module` and the whole set follows.
+
+    Everything is a multiple of it, which is what makes a loop close instead of
+    almost closing. A 90° curve of radius `module` advances exactly one module
+    along each axis and turns a right angle, so it tiles with the straights. A
+    junction whose arms reach half a module substitutes for one full straight in
+    every direction it serves.
+
+    45° curves do **not** land on the grid on their own — two of them make a
+    90° and land where one would. That is the same bargain every sectional
+    track system makes, and it is worth stating rather than discovering.
+
+    A 120° Y cannot tile a square grid at all. It is in the set because a
+    three-way with interchangeable ports is worth having, not because it fits.
+    """
+
+    module: float = 96.0
+    deck_height: float = 48.0
+    """How high a bridge deck sits. Half a module, so legs stack in modules."""
+
+    ramp_modules: float = 2.0
+    """How many modules a ramp takes to reach `deck_height`."""
+
+    bank_deg: float = 10.0
+
+    @property
+    def half(self) -> float:
+        return self.module / 2.0
+
+    @property
+    def quarter(self) -> float:
+        return self.module / 4.0
+
+    @property
+    def fillet(self) -> float:
+        """Junction corner radius, and the turn radius a car follows through it."""
+        return self.quarter
+
+
+GRID = Grid()
 
 
 # -- Construction A ----------------------------------------------------------
 
 
-def straight(length: float = 84.0) -> Path:
+def straight(length: float = GRID.module) -> Path:
     return Path.chain(Line(length))
 
 
-def curve(radius: float = 100.0, angle_deg: float = 90.0,
+def curve(radius: float = GRID.module, angle_deg: float = 90.0,
           bank_deg: float = 0.0) -> Path:
     return Path.chain(Arc(radius=radius,
                           angle=math.radians(angle_deg),
                           bank=math.radians(bank_deg)))
 
 
-def ramp(run: float = 84.0, rise: float = 34.0) -> Path:
-    return Path.chain(Ramp(run=run, rise=rise))
+def ramp(run: float = GRID.module * GRID.ramp_modules,
+         rise: float = GRID.deck_height,
+         lead: float = DEFAULT_PORT_CLEAR) -> Path:
+    """A rise with a flat run at each end.
 
-
-def s_bend(radius: float = 100.0, angle_deg: float = 45.0,
-           lead: float = 20.0) -> Path:
-    """A straight, a left turn, a right turn and a straight.
-
-    Not a standard part; it exists because it exercises every frame transition
-    a track can contain, which is what test 9.4 needs.
+    The leads are not decoration. A smoothstep's vertical curvature is greatest
+    at its ends — exactly where the connector reaches in — and the cut tools are
+    flat boxes aligned to the port frame. Putting each port on a straight keeps
+    the lap zones flat. `run` is the whole piece, so the set still tiles: the
+    rise simply takes up what the leads leave.
     """
+    return Path.chain(Line(lead), Ramp(run=run - 2.0 * lead, rise=rise),
+                      Line(lead))
+
+
+def s_bend(radius: float = GRID.module, angle_deg: float = 45.0,
+           lead: float = 20.0) -> Path:
+    """Not a part. It exists because straight → left → right → straight is
+    where a Frenet frame flips its normal, which test 9.4 relies on."""
     a = math.radians(angle_deg)
     return Path.chain(Line(lead), Arc(radius, a), Arc(radius, -a), Line(lead))
 
@@ -53,28 +107,37 @@ def s_bend(radius: float = 100.0, angle_deg: float = 45.0,
 # -- Construction B ----------------------------------------------------------
 
 
+def _hub(angles: list[float], corner_radius: float) -> Hub:
+    return Hub.uniform(angles, GRID.half, corner_radius)
+
+
+X_ARMS = [0.0, 90.0, 180.0, 270.0]
+T_ARMS = [0.0, 90.0, 180.0]
+Y_ARMS = [90.0, 210.0, 330.0]
+
+
 def x_junction(corner_radius: float = 0.0) -> Hub:
-    return Hub.auto([0.0, 90.0, 180.0, 270.0], corner_radius)
+    return _hub(X_ARMS, corner_radius)
 
 
 def t_junction(corner_radius: float = 0.0) -> Hub:
-    return Hub.auto([0.0, 90.0, 180.0], corner_radius)
+    return _hub(T_ARMS, corner_radius)
 
 
 def y_junction(corner_radius: float = 0.0) -> Hub:
     """Three arms at 120°, so all three ports are interchangeable."""
-    return Hub.auto([90.0, 210.0, 330.0], corner_radius)
+    return _hub(Y_ARMS, corner_radius)
 
 
-def x_rounded(corner_radius: float = ROUNDED) -> Hub:
+def x_rounded(corner_radius: float = GRID.fillet) -> Hub:
     return x_junction(corner_radius)
 
 
-def t_rounded(corner_radius: float = ROUNDED) -> Hub:
+def t_rounded(corner_radius: float = GRID.fillet) -> Hub:
     return t_junction(corner_radius)
 
 
-def y_rounded(corner_radius: float = ROUNDED) -> Hub:
+def y_rounded(corner_radius: float = GRID.fillet) -> Hub:
     return y_junction(corner_radius)
 
 
@@ -82,8 +145,14 @@ def y_rounded(corner_radius: float = ROUNDED) -> Hub:
 
 
 PATHS: dict[str, PathBuilder] = {
-    "straight": straight,
-    "curve": curve,
+    "straight_full": partial(straight, length=GRID.module),
+    "straight_half": partial(straight, length=GRID.half),
+    "straight_quarter": partial(straight, length=GRID.quarter),
+    "curve_90": partial(curve, radius=GRID.module, angle_deg=90.0),
+    "curve_45": partial(curve, radius=GRID.module, angle_deg=45.0),
+    "curve_90_tight": partial(curve, radius=GRID.half, angle_deg=90.0),
+    "curve_90_banked": partial(curve, radius=GRID.module, angle_deg=90.0,
+                               bank_deg=GRID.bank_deg),
     "ramp": ramp,
     "s_bend": s_bend,
 }
@@ -97,7 +166,11 @@ HUBS: dict[str, HubBuilder] = {
     "y_rounded": y_rounded,
 }
 
-CATALOGUE: list[str] = sorted(PATHS) + sorted(HUBS)
+NOT_PARTS = {"s_bend"}
+"""In PATHS because tests need them; not in the printable set."""
+
+CATALOGUE: list[str] = ([n for n in sorted(PATHS) if n not in NOT_PARTS]
+                        + sorted(HUBS))
 
 
 def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:

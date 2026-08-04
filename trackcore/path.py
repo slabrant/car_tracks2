@@ -15,7 +15,7 @@ from typing import Protocol, Sequence
 
 import numpy as np
 
-from .config import Body, Tolerances
+from .config import Body, Connector, Tolerances
 from .mesh import rotation_z, translation
 
 Vec3 = np.ndarray
@@ -25,6 +25,21 @@ DEFAULT_MIN_RADIUS = Tolerances().min_radius(Body())
 
 BANK_RAMP_FRACTION = 0.1
 """Bank eases in and out over this fraction of the arc at each end."""
+
+DEFAULT_PORT_CLEAR = (Connector().lap_length + Connector().fit_clearance + 2.0)
+"""How much of each end must stay flat, mm. 10.15 at default dimensions.
+
+**The cross-section must not roll inside a lap zone.** The connector's cut tools
+are flat boxes aligned to the port frame (§6.6); if the section has rolled by
+the time they reach in, they slice it at the wrong height on each rail and the
+diagonal split comes apart. A banked 90° curve failed exactly this way — the
+bank had reached six degrees where the notches bite, and the result came out
+genus 3.
+
+Horizontal curvature is fine and needs no clearance: it moves the section
+sideways, not in z, and a notch removes everything below the lap plane whatever
+its lateral position. It is roll and vertical curvature that must stay out.
+"""
 
 
 class PathTooTightError(ValueError):
@@ -107,6 +122,7 @@ class Arc:
     angle: float
     bank: float = 0.0
     min_radius: float = DEFAULT_MIN_RADIUS
+    bank_clear: float = DEFAULT_PORT_CLEAR
 
     def __post_init__(self) -> None:
         if self.radius <= 0:
@@ -117,6 +133,11 @@ class Arc:
             raise PathTooTightError(
                 f"Arc(radius={self.radius}) is below the minimum {self.min_radius} "
                 f"mm; the inner rail would turn inside out"
+            )
+        if self.bank != 0.0 and self.length <= 2.0 * self.bank_clear:
+            raise ValueError(
+                f"a banked arc must be longer than {2.0 * self.bank_clear:.1f} mm "
+                f"so both lap zones stay flat; this one is {self.length:.1f} mm"
             )
 
     @property
@@ -139,14 +160,17 @@ class Arc:
         return np.array([-k * math.sin(u), math.cos(u), 0.0])
 
     def roll(self, s: float) -> float:
+        """Zero over each lap zone, then eased in. See DEFAULT_PORT_CLEAR."""
         if self.bank == 0.0:
             return 0.0
-        u = s / self.length
-        f = BANK_RAMP_FRACTION
-        if u < f:
-            return self.bank * _smoothstep(u / f)
-        if u > 1.0 - f:
-            return self.bank * _smoothstep((1.0 - u) / f)
+        length, clear = self.length, self.bank_clear
+        if s <= clear or s >= length - clear:
+            return 0.0
+        run = min(BANK_RAMP_FRACTION * length, length / 2.0 - clear)
+        if s < clear + run:
+            return self.bank * _smoothstep((s - clear) / run)
+        if s > length - clear - run:
+            return self.bank * _smoothstep((length - clear - s) / run)
         return self.bank
 
     def curvature(self, s: float) -> float:
@@ -162,9 +186,11 @@ class Arc:
             step_angle = 2.0 * math.acos(1.0 - sag / self.radius)
         n = max(1, math.ceil(abs(self.angle) / step_angle))
         if self.bank != 0.0:
-            # the bank eases in and out over a tenth of the arc at each end;
-            # give that region enough stations to look like a ramp, not a step
+            # the bank stays flat over each lap zone and then eases in; give
+            # both the flat run and the ramp enough stations to be smooth
             n = max(n, math.ceil(12 / BANK_RAMP_FRACTION))
+            edges = [self.bank_clear, self.length - self.bank_clear]
+            return sorted(set([self.length * i / n for i in range(n + 1)] + edges))
         return [self.length * i / n for i in range(n + 1)]
 
     def end_transform(self) -> np.ndarray:

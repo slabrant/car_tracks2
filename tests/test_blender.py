@@ -105,13 +105,15 @@ def test_every_boolean_input_is_valid_before_the_solver_sees_it():
 
 
 MATINGS = [
-    ("straight", 1, "straight", 0),
-    ("curve", 1, "x_junction", 0),
-    ("x_rounded", 2, "curve", 0),
-    ("y_rounded", 1, "straight", 0),
+    ("straight_full", 1, "straight_full", 0),
+    ("curve_90", 1, "x_junction", 0),
+    ("x_rounded", 2, "curve_90", 0),
+    ("y_rounded", 1, "straight_full", 0),
     ("ramp", 1, "t_rounded", 2),
-    ("s_bend", 1, "y_junction", 1),
     ("t_rounded", 0, "x_rounded", 3),
+    ("curve_90_banked", 1, "straight_full", 0),
+    ("curve_90_tight", 1, "y_rounded", 2),
+    ("straight_quarter", 1, "t_junction", 1),
 ]
 
 
