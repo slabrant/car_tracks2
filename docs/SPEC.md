@@ -51,8 +51,8 @@ In scope:
 - Rotation-minimising frames so swept pieces do not twist.
 - A genderless, flip-symmetric end connector, identical at every port of every
   piece.
-- Bridge supports: a downward port grafted onto a short straight, legs made
-  of ordinary track pieces stood on end, and a foot.
+- Bridge supports: a port grafted onto a short straight, with legs made of
+  ordinary track pieces stood on end. Turned over, a support is its own foot.
 - Watertight, manifold mesh output.
 - STL / 3MF export via Blender.
 
@@ -210,7 +210,7 @@ There are two distinct symmetries and only one of them survives at a junction.
 | Path shape | line, arc, ramp | straight arms only | straight only |
 | Built from | rings along a path (§4) | prismatic slabs (§5) | two A's unioned (§5.5) |
 | Booleans | none | union of prisms, validated | one union, validated |
-| Flippable | always | when the plan has a mirror axis | **no, by design** |
+| Flippable | always | when the plan has a mirror axis | yes — flipped, it is the foot |
 
 They share `config`, the edge unit, the connector (§6), validation (§7) and
 export. They are three functions, not three subsystems, and none may grow a
@@ -458,9 +458,10 @@ rejected or explicitly marked non-flippable. Assert at construction.
 
 ### 5.5 Construction C — grafts, and how a bridge stands up
 
-A **support** is a short straight track section with a third port facing
-**down**. The leg that reaches the ground is an **ordinary track piece stood on
-end**. A **foot** caps the bottom.
+A **support** is a short straight track section with a third port on the
+**graft axis**, square to the track. The leg that reaches the ground is an
+**ordinary track piece stood on end**. There is no separate foot part: a support
+turned over is one (§5.6).
 
 No new interface is invented. Because §6.1's port is genderless and identical
 everywhere, a straight is already a structural column — that reuse is the payoff
@@ -501,33 +502,54 @@ loaded on the good axis. The leg only hangs in tension when the whole bridge is
 lifted, and a leg weighs a few grams.
 
 **Heights.** Legs stack in whatever straight lengths the set contains, plus the
-stub and the foot. For heights between increments, `pier(height)` is a
+two stubs. For heights between increments, `pier(height)` is a
 single-piece leg cut to length: same port, no new geometry, just different path
 data.
 
-### 5.6 Flip symmetry: the one deliberate exception
+### 5.6 What "flippable" actually means
 
-A support cannot be flippable. Turning it over would put the leg on top. So the
-rule gains an exception, and it is the only one:
+An earlier draft of this section carved supports out as a deliberate exception
+to flip symmetry. That was wrong, and it is recorded here because the mistake
+came from testing the wrong thing rather than from getting the geometry wrong.
 
-> Every piece is flippable **unless it declares an up direction.** Only supports
-> and feet may declare one, and only because gravity has already declared it for
-> them.
+The requirement lives at the **port** level: every port is genderless and
+flip-symmetric (§6.1). That is what makes a piece usable either way up, and it
+holds for a support exactly as it holds for a straight.
 
-Worth contrasting with gendering, because the two look superficially similar and
-are not. Gendering imposed an alternating parity constraint on **the whole
-layout** (§6.1) — it is why a 3-way junction was unbuildable. Declaring an up
-direction constrains **only the piece that declares it**. Its ports are still
-genderless, still flip-symmetric, still mate with anything either way round.
-Nothing else in the system learns about it.
+Piece-level flip congruence — rotate the whole solid 180° about its long axis
+and get an identical vertex set, test 9.18 — is a *consequence* for pieces whose
+body happens to be symmetric about `z = 0`. It is a cheap, sharp test and worth
+keeping. It is not itself the requirement.
 
-Test 9.18 therefore applies to every part except those explicitly flagged, and
-the flag is part metadata, not a special case inside a builder.
+A support's body is not symmetric about `z = 0`, so it fails 9.18. It is still
+flippable, because flipping it is still legal and still useful:
 
-**Not chosen.** A saddle that clamps onto any track piece from below would
-support at arbitrary points and need no special piece at all. It is a second
-interface to design, tolerance and print, and it duplicates a port that already
-works. Revisit only if fixed support positions turn out to be annoying in play.
+| orientation | role |
+|---|---|
+| stub down | **support** — grafted into the bridge, leg hanging below |
+| stub up | **foot** — the track section lies on the ground, leg plugs in above |
+
+**So there is no separate foot part.** A support turned over *is* the foot. Its
+own track section becomes the base, resting on the two lower rails for a
+`channel_width` × piece-length footprint, and its two through-ports stay usable
+at ground level, so a leg can rise straight out of ordinary ground-level track.
+
+A complete bridge leg:
+
+```
+   ground track ── support, stub up  (this is the foot)
+                        │
+                     leg: an ordinary straight, stood on end
+                        │
+   bridge deck ──── support, stub down
+```
+
+Two part types in that picture, and one of them is a plain straight.
+
+No part carries a hand-written "not flippable" flag, and none may acquire one.
+A flag would be a place for a special case to hide; the geometry already says
+everything that needs saying, and test 9.32 checks that the parts failing 9.18
+are exactly the grafted ones and no others.
 
 ---
 
@@ -881,10 +903,11 @@ failed.
   checks after the union.
 - 9.30 An ordinary straight, stood on end, mates the downward port with exactly
   `fit_clearance` — a leg is a track piece, not a special part.
-- 9.31 A foot mates a leg, and its base is a single planar face.
-- 9.32 The set of non-flippable parts is exactly the declared ones. Every other
-  part in `parts/` passes 9.18. A part that declares an up direction without
-  needing one fails this.
+- 9.31 A support turned over rests on a single plane — it is its own foot —
+  and its through-ports stay mate-able in that orientation.
+- 9.32 The parts failing piece-level congruence (9.18) are exactly the grafted
+  ones, derived from geometry rather than from a flag. For each of those, every
+  port still mates after the flip. No part carries a "not flippable" flag.
 
 **Whole-mesh and architecture**
 
@@ -964,9 +987,9 @@ square and filleted.
 both constructions. Tests 9.18–9.23. Output: pieces that actually click
 together, including a junction in a closed loop.
 
-**Phase 5 — supports.** Construction C: the grafted downward stub, the foot,
-and `pier(height)`. Tests 9.27–9.32. Output: a bridge that stands up on legs
-made of ordinary track.
+**Phase 5 — supports.** Construction C: the grafted stub and `pier(height)`.
+No foot part — a support turned over is one. Tests 9.27–9.32. Output: a bridge
+that stands up on legs made of ordinary track.
 
 **Phase 4 — the part set.** Ramps, banked curves, a family of radii, angles and
 junction sizes. **No new geometry code** — only new part data. If Phase 4
@@ -995,6 +1018,5 @@ Still open, deferrable to Phase 4:
 1. The standard radii, angles and lengths of the part set.
 2. Whether the deck wants a grip texture.
 3. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
-   symmetry objection was real but narrow: a support declares an up direction,
-   which constrains only itself (§5.6), unlike gendering which constrained the
-   whole layout.
+   symmetry objection was simply wrong: flip symmetry is a property of ports,
+   not of piece bodies (§5.6), and a support turned over is its own foot.
