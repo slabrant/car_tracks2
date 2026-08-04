@@ -51,6 +51,8 @@ In scope:
 - Rotation-minimising frames so swept pieces do not twist.
 - A genderless, flip-symmetric end connector, identical at every port of every
   piece.
+- Bridge supports: a downward port grafted onto a short straight, legs made
+  of ordinary track pieces stood on end, and a foot.
 - Watertight, manifold mesh output.
 - STL / 3MF export via Blender.
 
@@ -62,7 +64,7 @@ Explicitly **out of scope**, and not to be built even if it looks easy:
 - Free-form NURBS/Bezier paths. Paths are built from primitives (§4.1).
 - Curved junction arms. Arms are straight stubs; curvature comes from attaching
   a curve piece.
-- Supports, piers, scenery, a GUI, a Blender add-on.
+- Scenery, a GUI, a Blender add-on.
 - Backwards compatibility with `car_tracks` (v1).
 
 If a task appears to require any of the above, stop and ask.
@@ -199,19 +201,20 @@ There are two distinct symmetries and only one of them survives at a junction.
 
 ---
 
-## 3. Two constructions
+## 3. Three constructions
 
-| | Construction A — swept | Construction B — plan hub |
-|---|---|---|
-| Used for | 2-port pieces | junctions, N ≥ 3 |
-| Can slope or bank | yes | no, level only |
-| Path shape | line, arc, ramp | straight arms only |
-| Built from | rings along a path (§4) | prismatic slabs (§5) |
-| Booleans | none | union of 3+ prisms, validated |
+| | A — swept | B — plan hub | C — graft |
+|---|---|---|---|
+| Used for | 2-port pieces | junctions, N ≥ 3 | supports |
+| Can slope or bank | yes | no, level only | no |
+| Path shape | line, arc, ramp | straight arms only | straight only |
+| Built from | rings along a path (§4) | prismatic slabs (§5) | two A's unioned (§5.5) |
+| Booleans | none | union of prisms, validated | one union, validated |
+| Flippable | always | when the plan has a mirror axis | **no, by design** |
 
 They share `config`, the edge unit, the connector (§6), validation (§7) and
-export. They are two functions, not two subsystems, and neither may grow a
-special case for the other.
+export. They are three functions, not three subsystems, and none may grow a
+special case for another.
 
 ---
 
@@ -334,7 +337,7 @@ class MeshData:
 
 ---
 
-## 5. Construction B — junctions
+## 5. Constructions B and C — junctions and grafts
 
 A junction is `N` straight arms meeting at a hub. Because junctions are level
 and unbanked, the whole piece is **prismatic in z**: three flat slabs, with the
@@ -450,6 +453,81 @@ acts as a **mirror** about that axis. So:
 
 T, Y and X all satisfy this. An asymmetric layout does not, and must either be
 rejected or explicitly marked non-flippable. Assert at construction.
+
+---
+
+### 5.5 Construction C — grafts, and how a bridge stands up
+
+A **support** is a short straight track section with a third port facing
+**down**. The leg that reaches the ground is an **ordinary track piece stood on
+end**. A **foot** caps the bottom.
+
+No new interface is invented. Because §6.1's port is genderless and identical
+everywhere, a straight is already a structural column — that reuse is the payoff
+of the connector derivation, and it is why supports cost almost nothing now
+while they would have been a separate design problem under a gendered scheme.
+
+**Geometry.** The stub is the track profile swept vertically, placed with its
+`across` along world X and its `up` along world Y. The profile's rail flanges
+then land exactly on the horizontal piece's own lower rails — both occupy
+`|x| ∈ [rail_inner, half_width]` — and the web rises into the open channel to
+meet the deck underside. The section simply continues downward, and the stub is
+an I-beam column, which is the right shape for the job by accident of the track
+already being one.
+
+```
+SECTION ACROSS THE TRACK, at a support
+
+     ####                            ####     upper rails
+     ##################################       deck
+     ####                            ####     lower rails
+     ####                            ####
+     ####            ||              ####     stub flanges continue the
+     ####            ||              ####     rails; stub web in the middle
+     ####            ||              ####
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~     port face, looking down
+```
+
+**Construction.** The horizontal piece is Construction A; the stub is
+Construction A rotated; the two are unioned. Their flanges overlap by volume, so
+this is boolean-friendly. It is the second and last sanctioned boolean in the
+system, under the same obligation as §5.3: **re-check every §7 rule on the
+result before it may be exported.**
+
+**Loads.** The bridge presses down on the leg, so every vertical joint is in
+**compression**. Tab tips bear on notch bottoms after `fit_clearance` of settle,
+and compression is the joint's strong direction (§6.7) — a support column is
+loaded on the good axis. The leg only hangs in tension when the whole bridge is
+lifted, and a leg weighs a few grams.
+
+**Heights.** Legs stack in whatever straight lengths the set contains, plus the
+stub and the foot. For heights between increments, `pier(height)` is a
+single-piece leg cut to length: same port, no new geometry, just different path
+data.
+
+### 5.6 Flip symmetry: the one deliberate exception
+
+A support cannot be flippable. Turning it over would put the leg on top. So the
+rule gains an exception, and it is the only one:
+
+> Every piece is flippable **unless it declares an up direction.** Only supports
+> and feet may declare one, and only because gravity has already declared it for
+> them.
+
+Worth contrasting with gendering, because the two look superficially similar and
+are not. Gendering imposed an alternating parity constraint on **the whole
+layout** (§6.1) — it is why a 3-way junction was unbuildable. Declaring an up
+direction constrains **only the piece that declares it**. Its ports are still
+genderless, still flip-symmetric, still mate with anything either way round.
+Nothing else in the system learns about it.
+
+Test 9.18 therefore applies to every part except those explicitly flagged, and
+the flag is part metadata, not a special case inside a builder.
+
+**Not chosen.** A saddle that clamps onto any track piece from below would
+support at arbitrary points and need no special piece at all. It is a second
+interface to design, tolerance and print, and it duplicates a port that already
+works. Revisit only if fixed support positions turn out to be annoying in play.
 
 ---
 
@@ -793,6 +871,21 @@ failed.
 - 9.23 **Junction round trip.** A loop of straights and curves closed through a
   T, entering by one arm and leaving by another, closes to `1e-6`.
 
+**Supports — Construction C**
+
+- 9.27 A support's three ports present identical geometry in their own port
+  frames, indistinguishable from a straight's ports.
+- 9.28 The downward port's frame is vertical, centred on the piece, and square
+  to the track above it.
+- 9.29 A support unions to exactly one watertight solid and passes all six §7
+  checks after the union.
+- 9.30 An ordinary straight, stood on end, mates the downward port with exactly
+  `fit_clearance` — a leg is a track piece, not a special part.
+- 9.31 A foot mates a leg, and its base is a single planar face.
+- 9.32 The set of non-flippable parts is exactly the declared ones. Every other
+  part in `parts/` passes 9.18. A part that declares an up direction without
+  needing one fails this.
+
 **Whole-mesh and architecture**
 
 - 9.24 Every piece in `parts/` passes all six checks of §7, including junctions
@@ -871,6 +964,10 @@ square and filleted.
 both constructions. Tests 9.18–9.23. Output: pieces that actually click
 together, including a junction in a closed loop.
 
+**Phase 5 — supports.** Construction C: the grafted downward stub, the foot,
+and `pier(height)`. Tests 9.27–9.32. Output: a bridge that stands up on legs
+made of ordinary track.
+
 **Phase 4 — the part set.** Ramps, banked curves, a family of radii, angles and
 junction sizes. **No new geometry code** — only new part data. If Phase 4
 requires editing `sweep.py` or `hub.py`, an earlier phase was wrong.
@@ -897,5 +994,7 @@ Still open, deferrable to Phase 4:
 
 1. The standard radii, angles and lengths of the part set.
 2. Whether the deck wants a grip texture.
-3. Bridge piers. Out of scope; a pier interface would break flip symmetry and so
-   needs its own decision.
+3. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
+   symmetry objection was real but narrow: a support declares an up direction,
+   which constrains only itself (§5.6), unlike gendering which constrained the
+   whole layout.
