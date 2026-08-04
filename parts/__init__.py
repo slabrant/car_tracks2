@@ -10,7 +10,9 @@ from __future__ import annotations
 import math
 from typing import Callable
 
-from trackcore import DEFAULT, Arc, Hub, Line, Path, Piece, Ramp, TrackConfig, sweep
+from trackcore import (DEFAULT, Arc, Hub, Line, Path, Piece, Ramp, TrackConfig,
+                       applied, port_matrices, sweep)
+from trackcore.connector import validate as validate_connector
 
 PathBuilder = Callable[..., Path]
 HubBuilder = Callable[..., Hub]
@@ -98,10 +100,44 @@ HUBS: dict[str, HubBuilder] = {
 CATALOGUE: list[str] = sorted(PATHS) + sorted(HUBS)
 
 
-def build(name: str, config: TrackConfig = DEFAULT, **kwargs) -> Piece:
-    """Build a part by name, whichever construction it uses."""
+def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:
+    """The port frames of a part, in the order its connectors were applied."""
     if name in PATHS:
-        return Piece(name=name, solids=(sweep(PATHS[name](**kwargs), config),))
+        return port_matrices(PATHS[name](**kwargs), config)
     if name in HUBS:
-        return HUBS[name](**kwargs).piece(name, config)
+        return HUBS[name](**kwargs).port_matrices(config)
     raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
+
+
+def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
+          **kwargs) -> Piece:
+    """Build a part by name, whichever construction it uses.
+
+    The connector is the same object at every port of every part (§6), so it is
+    applied here rather than inside either construction. Neither `sweep.py` nor
+    `hub.py` knows what a joint looks like.
+    """
+    if name in PATHS:
+        path = PATHS[name](**kwargs)
+        solids: tuple = (sweep(path, config),)
+        matrices = port_matrices(path, config)
+        reach = 2.0 * (config.connector.lap_length + config.connector.fit_clearance)
+        if connectors and path.length <= reach:
+            raise ValueError(
+                f"{name} is {path.length:.1f} mm long but two joints need "
+                f"{reach:.1f} mm; the notches would meet in the middle"
+            )
+    elif name in HUBS:
+        hub = HUBS[name](**kwargs)
+        solids = tuple(hub.solids(config))
+        matrices = hub.port_matrices(config)
+    else:
+        raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
+
+    if not connectors:
+        return Piece(name=name, solids=solids)
+
+    validate_connector(config)
+    cuts, additions = applied(matrices, config)
+    return Piece(name=name, solids=solids, cuts=tuple(cuts),
+                 additions=tuple(additions))

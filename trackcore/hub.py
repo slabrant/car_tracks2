@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .config import DEFAULT, TrackConfig
+from .connector import port_matrix
 from .mesh import MeshData, Piece, Pt2, prism, shoelace
 
 TAU = 2.0 * math.pi
@@ -251,6 +252,16 @@ class Hub:
         for region in self.rail_regions(config):
             out.append(prism(_as_pairs(region),
                              -body.half_height, body.half_height))
+        return out
+
+    def port_matrices(self, config: TrackConfig = DEFAULT) -> list[np.ndarray]:
+        """One port frame per arm, each pointing out along its arm, §6."""
+        out = []
+        for arm in self.arms:
+            u = direction(arm.angle)
+            out.append(port_matrix((arm.port_distance * u[0],
+                                    arm.port_distance * u[1], 0.0),
+                                   (u[0], u[1], 0.0), (0.0, 0.0, 1.0)))
         return out
 
     def piece(self, name: str, config: TrackConfig = DEFAULT) -> Piece:

@@ -1,9 +1,9 @@
 # Car Tracks 2 — Specification
 
-Status: **Phases 0, 1 and 2 complete.** The joint is calibrated against printed
-parts; swept pieces and junctions build, validate and export. Phase 3
-(connectors), Phase 4 (the part set) and Phase 5 (supports) not started.
-See §10.
+Status: **Phases 0–3 complete.** The joint is calibrated against printed parts;
+swept pieces and junctions build, validate and export, and every port of every
+part mates with every other. Phase 4 (the part set) and Phase 5 (supports) not
+started. See §10.
 
 This document is the contract. If an implementation disagrees with it, the
 implementation is wrong. If this document is wrong, fix this document first,
@@ -448,9 +448,9 @@ nearby ones. **Coplanar faces built from identical vertices are the easy case
 for a boolean; near-coincident vertices are the hard one.** Prefer exact
 coincidence to a near miss.
 
-This is the **only** place in the system where a boolean is permitted, and it
-carries a mandatory obligation: the union result is re-checked against every
-item in §7 before it may be exported. Use Blender's `MANIFOLD` solver.
+Booleans are permitted here under §7a's policy: every input a valid solid, the
+result re-checked against every item in §7 before export. Use Blender's
+`MANIFOLD` solver.
 
 Polygon triangulation for the prism caps is ear clipping — roughly 60 lines, no
 dependency. Do not add a 2D geometry library; the outline is constructed
@@ -505,9 +505,7 @@ SECTION ACROSS THE TRACK, at a support
 
 **Construction.** The horizontal piece is Construction A; the stub is
 Construction A rotated; the two are unioned. Their flanges overlap by volume, so
-this is boolean-friendly. It is the second and last sanctioned boolean in the
-system, under the same obligation as §5.3: **re-check every §7 rule on the
-result before it may be exported.**
+this is boolean-friendly. §7a's policy applies.
 
 **Loads.** The bridge presses down on the leg, so every vertical joint is in
 **compression**. Tab tips bear on notch bottoms after `fit_clearance` of settle,
@@ -746,11 +744,41 @@ child cannot take the track apart. Phase 0 answers it.
 track.** Pieces are pushed together horizontally. Lowering one piece onto
 another is not merely awkward, it is **geometrically impossible** — see §6.7.
 
-### 6.6 Implementation note
+### 6.6 How the connector is applied
 
-Connector geometry is built in the core, in each port's frame, as explicit
-topology — not as a boolean against a separate solid. §5.3's prism union is the
-sole sanctioned boolean in the system.
+The connector is defined **once**, in a port's own frame, as a set of cut solids
+and addition solids, and transformed to wherever a port is. That single
+definition is why a curve's angled end, a ramp's sloped end and a junction's arm
+all carry byte-identical joints (test 9.21), and why neither `sweep.py` nor
+`hub.py` contains a line about what a joint looks like.
+
+Applying it is a boolean, under §7a. An earlier version of this section forbade
+that and required explicit topology instead. That is not achievable and the
+reasoning was wrong: through the lap zone a port's cross-section is **two
+disjoint quadrants**, so it is not a ring, and the constant-vertex-count sweep
+of §4.3 cannot express it. Building the surface by hand instead would mean
+bespoke stitching code at every port of every construction — precisely the kind
+of thing that produced v1's non-manifold output. The boolean is the safer path,
+and §7a is what makes it safe.
+
+Order matters: **cuts before additions**. A tab is added flush against the slot
+and notch boundaries the cuts define, so adding first would leave a cut tool
+coincident with a face it must not touch.
+
+Two details are load-bearing, and both were found by the Y junction, whose port
+planes sit at irrational angles where the X and T's arithmetic is exact:
+
+- **There is no separate centreline-slot tool.** The two notch tools each reach
+  one slot half-width past `x = 0`, so across `|x| < fit_clearance/2` they
+  overlap and between them remove every z — which is the slot. A third tool for
+  it is wholly contained in their union and contributes nothing but coplanar
+  faces.
+- **A detent's base is buried well behind its lap face**, not by `EPS`. A detent
+  is a triangle with a protruding apex and a buried base; sunk only a hair, its
+  sloped flanks cross the lap plane a fraction from the base corners and the
+  solver must resolve near-parallel surfaces meeting at a sliver. The flank runs
+  are measured over the whole triangle, base included, so burying the base
+  deeper changes nothing a mating part can feel.
 
 ### 6.7 What the joint constrains, and what it cannot
 
@@ -789,6 +817,32 @@ will sag progressively. Span with a single `Ramp` piece, or support the joints.
 Do not try to fix this by stiffening the connector; the limit is the joint
 topology, which §6.1 fixes.
 
+## 7a. Boolean policy
+
+Three constructions use booleans: the junction slab union (§5.3), the support
+graft (§5.5) and the connector (§6.6). The rule is not "avoid them" — it is:
+
+1. **Every input is a valid solid in its own right**, checked before the solver
+   sees it. Otherwise a failure afterwards wrongly blames the solver.
+2. **Prefer exact coincidence to a near miss.** Coplanar faces built from
+   identical vertices are the easy case; vertices that are merely close are the
+   hard one. Share the same computed points rather than recomputing them.
+3. **Prefer volumetric overlap to face contact** where it costs nothing.
+4. **Do not add a tool whose effect another tool already covers.** A redundant
+   tool contributes only coplanar faces.
+5. **Repair, then validate strictly.** An exact solver may leave sub-tolerance
+   artifacts — a vertex inserted on an edge it touches, a triangle collinear to
+   within a nanometre. They carry no volume and no printed part can express
+   them, but §7 cannot tell a harmless sliver from a real one, and it should not
+   try. Weld and dissolve at a tolerance far below anything a printer resolves
+   (5 µm against a 150 µm smallest real feature), then run §7 unrelaxed. The
+   tolerance is capped by an assertion so it can never approach real geometry.
+
+Chasing every artifact back to its cause is endless, and it tempts you to loosen
+§7. Loosening §7 is how v1 shipped unprintable parts.
+
+---
+
 ## 7. Mesh validation
 
 Runs in the core on `MeshData`, no Blender. Failure raises; it does not log.
@@ -817,14 +871,18 @@ car_tracks2/
     frames.py           # §4.2
     sweep.py            # §4.3   Construction A
     hub.py              # §5      Construction B
-    connector.py        # §6
+    connector.py        # §6, defined once in a port frame
     validate.py         # §7
-    mesh.py             # MeshData, ear-clipping triangulation
+    mesh.py             # MeshData, Piece, primitives, ear clipping
   blender/              # the only place bpy appears
     build.py            # MeshData -> bmesh -> object
-    boolean.py          # §5.3 prism union, MANIFOLD solver
+    boolean.py          # §7a, MANIFOLD solver
+    cleanup.py          # §7a.5, weld and dissolve below print resolution
     export.py           # STL / 3MF
     run.py              # entry point for `blender --background --python`
+    mate_check.py       # §9.19 against finished solids
+    preview.py          # renders
+    assemble.py         # places parts at each other's ports and renders
   parts/                # part definitions; a straight is ~3 lines
   tests/                # pytest, system python, Blender not required
   docs/SPEC.md          # this file
@@ -1016,9 +1074,25 @@ Two things worth recording:
   is no longer inset. The lesson generalises: test the layout whose arithmetic
   is not exact.
 
-**Phase 3 — connectors on everything.** `connector.py` applied at every port of
-both constructions. Tests 9.18–9.23. Output: pieces that actually click
-together, including a junction in a closed loop.
+**Phase 3 — connectors on everything.** ✅ **COMPLETE**
+
+`trackcore/connector.py` defines the joint once in a port frame; `sweep.py` and
+`hub.py` each expose their port frames; `parts.build` applies it. Neither
+construction contains a line about what a joint looks like. Tests 9.18–9.23
+pass, 283 in total.
+
+The decisive test is not any of the symmetry proofs but
+`test_two_finished_parts_actually_fit_together`: it builds two real parts,
+booleans, cleanup and all, mates them through `MATE`, intersects them and
+requires **zero** shared volume. Every pairing tried passes — curve into X,
+ramp into rounded T, S-bend into Y, rounded T into rounded X. Any port mates
+any port, either way round, which is the whole claim of §6.1 discharged against
+actual solids rather than against a diagram.
+
+Two corrections to earlier sections came out of this phase: §6.6 (the connector
+is applied by boolean, and the previous prohibition was not achievable) and
+§7a, which replaces three scattered "this is the only sanctioned boolean"
+claims with one policy.
 
 **Phase 5 — supports.** Construction C: the grafted stub and `pier(height)`.
 No foot part — a support turned over is one. Tests 9.27–9.32. Output: a bridge

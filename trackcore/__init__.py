@@ -9,13 +9,14 @@ and Construction B (junctions) in `hub.py`. Connectors are Phase 3.
 """
 
 from .config import DEFAULT, Body, Connector, Tolerances, TrackConfig
+from .connector import MATE, applied, port_matrix
 from .edge_unit import PROFILE_VERTS, EdgeUnit, profile, profile_area
 from .frames import DegenerateFrame, Frames
 from .frames import build as build_frames
 from .hub import Arm, Hub, HubInvalid
 from .mesh import MeshData, Piece, prism, read_stl, write_stl
 from .path import Arc, Line, Path, PathDiscontinuous, PathTooTightError, Ramp
-from .sweep import expected_volume, sweep
+from .sweep import expected_volume, port_matrices, sweep
 from .validate import MeshInvalid, check, signed_volume
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "MeshData", "Piece", "prism", "read_stl", "write_stl",
     "Hub", "Arm", "HubInvalid",
     "Path", "Line", "Arc", "Ramp", "PathTooTightError", "PathDiscontinuous",
-    "sweep", "expected_volume",
+    "sweep", "expected_volume", "port_matrices",
+    "applied", "port_matrix", "MATE",
     "check", "signed_volume", "MeshInvalid",
 ]

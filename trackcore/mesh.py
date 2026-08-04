@@ -15,6 +15,7 @@ from typing import Iterable, Sequence
 import numpy as np
 
 Pt2 = tuple[float, float]
+Vec3 = tuple[float, float, float]
 
 
 @dataclass(frozen=True)
@@ -28,10 +29,26 @@ class Piece:
 
     name: str
     solids: tuple["MeshData", ...]
+    cuts: tuple["MeshData", ...] = ()
+    additions: tuple["MeshData", ...] = ()
 
     @property
-    def needs_union(self) -> bool:
-        return len(self.solids) > 1
+    def needs_boolean(self) -> bool:
+        return len(self.solids) > 1 or bool(self.cuts) or bool(self.additions)
+
+    def stages(self) -> list[tuple[str, tuple["MeshData", ...]]]:
+        """The boolean programme, in order.
+
+        Cuts run before additions. The tabs added at a port sit exactly against
+        the slot and notch boundaries the cuts define, so adding first would
+        leave a cut tool coincident with a face it must not touch.
+        """
+        return [("UNION", self.solids[1:]),
+                ("DIFFERENCE", self.cuts),
+                ("UNION", self.additions)]
+
+    def every_solid(self):
+        return (*self.solids, *self.cuts, *self.additions)
 
 
 @dataclass(frozen=True)
@@ -136,6 +153,46 @@ def is_simple(poly: Sequence[Pt2], tol: float = 1e-12) -> bool:
             if ((d1 > tol) != (d2 > tol)) and ((d3 > tol) != (d4 > tol)):
                 return False
     return True
+
+
+def box(lo: Vec3, hi: Vec3) -> MeshData:
+    """Axis-aligned box. 8 verts, 6 quads, outward normals."""
+    x0, y0, z0 = lo
+    x1, y1, z1 = hi
+    if not (x1 > x0 and y1 > y0 and z1 > z0):
+        raise ValueError(f"degenerate box {lo} -> {hi}")
+
+    verts = np.array([(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+                      (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+                     dtype=np.float64)
+    faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+             [3, 7, 6, 2], [0, 4, 7, 3], [1, 2, 6, 5]]
+    return MeshData(verts=verts, faces=faces)
+
+
+def prism_yz(poly: Sequence[Pt2], x0: float, x1: float) -> MeshData:
+    """Extrude a polygon given in the YZ plane along X.
+
+    ``poly`` must be CCW in (y, z) parameter order, which by Y x Z = X gives it
+    an outward normal of +X.
+    """
+    if x1 <= x0:
+        raise ValueError(f"degenerate extrusion {x0} -> {x1}")
+    n = len(poly)
+    if n < 3:
+        raise ValueError("polygon needs at least 3 points")
+    if shoelace(poly) <= 0:
+        raise ValueError("polygon must be CCW in (y, z)")
+
+    lo = np.array([(x0, y, z) for (y, z) in poly], dtype=np.float64)
+    hi = np.array([(x1, y, z) for (y, z) in poly], dtype=np.float64)
+
+    faces: list[list[int]] = [list(range(n - 1, -1, -1)),
+                              [n + i for i in range(n)]]
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, n + j, n + i])
+    return MeshData(verts=np.vstack([lo, hi]), faces=faces)
 
 
 def prism(poly: Sequence[Pt2], z0: float, z1: float) -> MeshData:

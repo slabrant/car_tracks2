@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import DEFAULT, TrackConfig
+from .connector import port_matrix
 from .edge_unit import PROFILE_VERTS, profile
 from .frames import Frames, build
 from .mesh import MeshData
@@ -67,6 +68,20 @@ def sweep(path: Path, config: TrackConfig = DEFAULT) -> MeshData:
     faces.append([last + j for j in range(n_profile)])
 
     return MeshData(verts=verts, faces=faces)
+
+
+def port_matrices(path: Path, config: TrackConfig = DEFAULT) -> list:
+    """The two port frames of a swept piece, §6.
+
+    Both point **out** of the piece, so the near one faces backwards along the
+    path. That is what makes two pieces laid end to end present frames related
+    by `connector.MATE`, which is the whole point of a genderless port.
+    """
+    frames = build(path, config.tolerances.chord_sag)
+    return [
+        port_matrix(frames.points[0], -frames.tangent[0], frames.up[0]),
+        port_matrix(frames.points[-1], frames.tangent[-1], frames.up[-1]),
+    ]
 
 
 def expected_volume(path: Path, config: TrackConfig = DEFAULT) -> float:

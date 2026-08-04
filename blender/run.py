@@ -20,36 +20,37 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from blender.boolean import union  # noqa: E402
+from blender.boolean import apply_boolean  # noqa: E402
 from blender.build import from_object, reset_scene, to_object  # noqa: E402
+from blender.cleanup import clean  # noqa: E402
 from blender.export import export  # noqa: E402
 from parts import CATALOGUE, build  # noqa: E402
 from trackcore import DEFAULT, check  # noqa: E402
 
 
-def build_part(name: str, collection, **kwargs):
-    piece = build(name, DEFAULT, **kwargs)
+def build_part(name: str, collection, connectors: bool = True, **kwargs):
+    piece = build(name, DEFAULT, connectors=connectors, **kwargs)
 
-    # every input solid must be valid in its own right before any boolean
-    for index, solid in enumerate(piece.solids):
-        check(solid, name=f"{name} slab {index}")
+    # every input must be a valid solid in its own right before any boolean;
+    # otherwise a failure afterwards would wrongly blame the solver
+    for index, solid in enumerate(piece.every_solid()):
+        check(solid, name=f"{name} input {index}")
 
-    objects = [to_object(solid, f"{name}_{i}", collection)
-               for i, solid in enumerate(piece.solids)]
+    target = to_object(piece.solids[0], name, collection)
+    for operation, meshes in piece.stages():
+        for index, mesh in enumerate(meshes):
+            tool = to_object(mesh, f"{name}_{operation}_{index}", collection)
+            apply_boolean(target, tool, operation)
 
-    if piece.needs_union:
-        obj = union(objects, name=name)
-        stats = check(from_object(obj), name=f"{name} (after union)")
-        note = f"{len(piece.solids)} slabs unioned"
-    else:
-        obj = objects[0]
-        obj.name = name
-        stats = check(from_object(obj), name=name)
-        note = "swept"
+    if piece.needs_boolean:
+        clean(target)
+    stats = check(from_object(target), name=f"{name} (after booleans)")
+    note = (f"{len(piece.solids)}+{len(piece.cuts)}-{len(piece.additions)}+"
+            if piece.needs_boolean else "swept")
 
-    print(f"  {name:12s} {note:18s} V={int(stats['verts']):5d} "
+    print(f"  {name:12s} {note:14s} V={int(stats['verts']):5d} "
           f"F={int(stats['faces']):5d}  vol={stats['volume_mm3']:9.2f} mm3")
-    return obj
+    return target
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -65,6 +66,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--run", type=float, default=None)
     parser.add_argument("--rise", type=float, default=None)
     parser.add_argument("--corner-radius", type=float, default=None)
+    parser.add_argument("--no-connectors", action="store_true",
+                        help="flat-ended pieces, for measuring the bare body")
     return parser.parse_args(argv)
 
 
@@ -92,7 +95,9 @@ def main() -> int:
 
     for name in names:
         collection = reset_scene()
-        obj = build_part(name, collection, **kwargs_for(name, args))
+        obj = build_part(name, collection,
+                         connectors=not args.no_connectors,
+                         **kwargs_for(name, args))
         export([obj], os.path.join(args.outdir, f"{name}.{args.format}"))
 
     print()
