@@ -1,6 +1,6 @@
 # Car Tracks 2 — Specification
 
-Status: **All phases complete (0–5).** The joint is calibrated against printed
+Status: **Phases 0–5 complete; Phase 6 (printing) not started.** The joint is calibrated against printed
 parts; swept pieces, junctions and supports build, validate and export; every
 port of every part mates with every other; the set is laid out on a grid so
 loops close; and bridges stand on legs made of ordinary track. See §10 for what
@@ -67,6 +67,7 @@ Explicitly **out of scope**, and not to be built even if it looks easy:
 - Curved junction arms. Arms are straight stubs; curvature comes from attaching
   a curve piece.
 - Scenery, a GUI, a Blender add-on.
+- Slicing. Phase 6 orients parts for printing; it does not generate G-code.
 - Backwards compatibility with `car_tracks` (v1).
 
 If a task appears to require any of the above, stop and ask.
@@ -1191,6 +1192,29 @@ Every part fits a 220 mm bed; the longest is the ramp at 192 mm.
 
 ---
 
+**Phase 6 — printing.** ⬜ **NOT STARTED**
+
+Everything so far produces a correct solid. This phase makes it a printable
+one. The findings are already measured (§11.1); this is about acting on them.
+
+- **`--orient auto` in the exporter.** A part can be laid on its side, with
+  nothing to bridge, exactly when its `across` direction is constant along the
+  path — straights, the ramp, and the support's body. Everything else lies
+  flat. The rule is derivable from the path, so the exporter should apply it
+  rather than the operator remembering.
+- **A decision on junctions**, which are the hard case: 27 mm of unsupported
+  deck on a `y_junction` rising to 53 mm on an `x_rounded`. Square hubs for
+  finish, rounded for the turn, or supported hubs for both.
+- **A documented profile**: layer height, wall count, brim (the side-printed
+  parts stand on a 4.7 mm footprint), bridging settings.
+- **Acceptance**: every part exports already oriented, and a printed set of one
+  of each assembles into a closed loop with a bridge over it.
+
+Deliberately *not* in scope: slicing. This phase decides orientation and
+records settings; it does not generate G-code.
+
+---
+
 ## 11. Assumptions and open questions
 
 Recorded assumptions, made so work can proceed; overrule any of them and the
@@ -1246,7 +1270,10 @@ Still open:
    To do: `--orient auto` in the exporter, laying straights and the ramp on
    their side and the rest flat.
 
-2. Whether the deck wants a grip texture.
+2. **Whether the deck wants a grip texture.** Open. It would be a profile
+   change rather than a construction change — `edge_unit.py` owns the section,
+   so a texture would live there and every part would inherit it. Worth
+   deciding only after a printed set has been played with.
 3. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
    symmetry objection was simply wrong: flip symmetry is a property of ports,
    not of piece bodies (§5.6), and a support turned over is its own foot.
