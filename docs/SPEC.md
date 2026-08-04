@@ -1,7 +1,8 @@
 # Car Tracks 2 — Specification
 
-Status: **Phase 0 complete and calibrated against printed parts.** Phases 1–4
-not started. See §10.
+Status: **Phases 0 and 1 complete.** The joint is calibrated against printed
+parts and swept pieces build, validate and export. Phases 2–4 not started.
+See §10.
 
 This document is the contract. If an implementation disagrees with it, the
 implementation is wrong. If this document is wrong, fix this document first,
@@ -837,9 +838,30 @@ by friction. And pull-out landing on "firm but will come apart" is exactly the
 target for a toy — the one axis that can only be held elastically is held about
 right.
 
-**Phase 1 — edge unit and Construction A.** `config`, `edge_unit`, `path`,
-`frames`, `sweep`, `validate`, `mesh`. Tests 9.1–9.11, 9.25, 9.26. Output:
-flat-ended straight and 90° arc as STL.
+**Phase 1 — edge unit and Construction A.** ✅ **COMPLETE**
+
+`trackcore/` holds `config`, `edge_unit`, `path`, `frames`, `sweep`, `validate`
+and `mesh`; `blender/` holds the export layer; `parts/` holds straight, curve,
+ramp and s_bend as path data only. Tests 9.1–9.11 and 9.25–9.26 pass, 77 of
+them, headless, in about a second.
+
+Measured against the analytic answer: a straight comes out at exactly
+`profile_area × length` (0.0000 % error), and a 90° arc at 0.026 % under the
+Pappus volume, which is the expected chord deficit at a 0.02 mm sag tolerance
+and shrinks when the tolerance is tightened.
+
+Two things worth recording:
+
+- The `s_bend` part exists only to exercise a straight → left turn → right turn
+  → straight sequence, because that is where a Frenet frame flips its normal.
+  Test 9.4 holds `up · ẑ > 0.999` across it. A Frenet implementation fails
+  there, which is the point.
+- Ear clipping was needed earlier than §8 implies. The end caps are the I-beam
+  profile, which is **non-convex**, so a fan triangulation from one corner
+  emits triangles crossing the open channel between the rails plus two exactly
+  collinear ones. The signed sums used for area and volume survive that
+  silently; an exported STL does not. `mesh.triangulate` ear-clips, and
+  `tests/test_mesh.py` pins the defect so the cheap version cannot come back.
 
 **Phase 2 — Construction B.** `hub.py`, ear clipping, the prism union in
 `blender/boolean.py`. Tests 9.12–9.17, 9.24. Output: flat-ended X, T and Y, both

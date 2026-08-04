@@ -1,0 +1,387 @@
+"""Path primitives and their concatenation. docs/SPEC.md §4.1.
+
+Pure Python + numpy. Never imports bpy.
+
+Paths are built from primitives, not fitted splines. A physical track set needs
+pieces whose ends sit at exact repeatable angles so they tile; a fitted spline
+gives irrational end tangents and loops that never close.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import Protocol, Sequence
+
+import numpy as np
+
+from .config import Body, Tolerances
+from .mesh import rotation_z, translation
+
+Vec3 = np.ndarray
+
+DEFAULT_MIN_RADIUS = Tolerances().min_radius(Body())
+"""18.0 mm at default dimensions. Below this a sweep folds through itself."""
+
+BANK_RAMP_FRACTION = 0.1
+"""Bank eases in and out over this fraction of the arc at each end."""
+
+
+class PathTooTightError(ValueError):
+    """The path curves tighter than the profile can be swept around, §4.1."""
+
+
+class PathDiscontinuous(ValueError):
+    """Two primitives do not meet in position or tangent, §4.1."""
+
+
+def _smoothstep(t: float) -> float:
+    t = min(max(t, 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _unit(v: np.ndarray) -> np.ndarray:
+    n = float(np.linalg.norm(v))
+    if n == 0.0:
+        raise ValueError("cannot normalise a zero vector")
+    return v / n
+
+
+class Primitive(Protocol):
+    """One segment, in its own local frame: starts at the origin heading +Y."""
+
+    length: float
+
+    def point(self, s: float) -> Vec3: ...
+    def tangent(self, s: float) -> Vec3: ...
+    def roll(self, s: float) -> float: ...
+    def curvature(self, s: float) -> float: ...
+    def min_radius_of_curvature(self) -> float: ...
+    def stations(self, sag: float) -> list[float]: ...
+    def end_transform(self) -> np.ndarray: ...
+
+
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Line:
+    """A straight run."""
+
+    length: float
+
+    def __post_init__(self) -> None:
+        if self.length <= 0:
+            raise ValueError("Line length must be positive")
+
+    def point(self, s: float) -> Vec3:
+        return np.array([0.0, s, 0.0])
+
+    def tangent(self, s: float) -> Vec3:
+        return np.array([0.0, 1.0, 0.0])
+
+    def roll(self, s: float) -> float:
+        return 0.0
+
+    def curvature(self, s: float) -> float:
+        return 0.0
+
+    def min_radius_of_curvature(self) -> float:
+        return math.inf
+
+    def stations(self, sag: float) -> list[float]:
+        return [0.0, self.length]
+
+    def end_transform(self) -> np.ndarray:
+        return translation(0.0, self.length, 0.0)
+
+
+@dataclass(frozen=True)
+class Arc:
+    """A horizontal circular arc. ``angle`` > 0 turns left, §4.1.
+
+    Left is `-X`: with forward `+Y` and up `+Z`, right is forward × up = `+X`.
+    """
+
+    radius: float
+    angle: float
+    bank: float = 0.0
+    min_radius: float = DEFAULT_MIN_RADIUS
+
+    def __post_init__(self) -> None:
+        if self.radius <= 0:
+            raise ValueError("Arc radius must be positive")
+        if self.angle == 0:
+            raise ValueError("Arc angle must be non-zero")
+        if self.radius < self.min_radius:
+            raise PathTooTightError(
+                f"Arc(radius={self.radius}) is below the minimum {self.min_radius} "
+                f"mm; the inner rail would turn inside out"
+            )
+
+    @property
+    def length(self) -> float:
+        return self.radius * abs(self.angle)
+
+    @property
+    def _turn(self) -> float:
+        return 1.0 if self.angle > 0 else -1.0
+
+    def _u(self, s: float) -> float:
+        return s / self.radius
+
+    def point(self, s: float) -> Vec3:
+        k, r, u = self._turn, self.radius, self._u(s)
+        return np.array([k * r * (math.cos(u) - 1.0), r * math.sin(u), 0.0])
+
+    def tangent(self, s: float) -> Vec3:
+        k, u = self._turn, self._u(s)
+        return np.array([-k * math.sin(u), math.cos(u), 0.0])
+
+    def roll(self, s: float) -> float:
+        if self.bank == 0.0:
+            return 0.0
+        u = s / self.length
+        f = BANK_RAMP_FRACTION
+        if u < f:
+            return self.bank * _smoothstep(u / f)
+        if u > 1.0 - f:
+            return self.bank * _smoothstep((1.0 - u) / f)
+        return self.bank
+
+    def curvature(self, s: float) -> float:
+        return 1.0 / self.radius
+
+    def min_radius_of_curvature(self) -> float:
+        return self.radius
+
+    def stations(self, sag: float) -> list[float]:
+        if sag >= self.radius:
+            step_angle = math.pi
+        else:
+            step_angle = 2.0 * math.acos(1.0 - sag / self.radius)
+        n = max(1, math.ceil(abs(self.angle) / step_angle))
+        if self.bank != 0.0:
+            # the bank eases in and out over a tenth of the arc at each end;
+            # give that region enough stations to look like a ramp, not a step
+            n = max(n, math.ceil(12 / BANK_RAMP_FRACTION))
+        return [self.length * i / n for i in range(n + 1)]
+
+    def end_transform(self) -> np.ndarray:
+        return translation(*self.point(self.length)) @ rotation_z(self.angle)
+
+
+@dataclass(frozen=True)
+class Ramp:
+    """A vertical S-curve: the bridge and slope primitive, §4.1.
+
+    ``run`` is the horizontal distance; ``length`` is true arc length and is
+    slightly greater. The vertical profile is a smoothstep, so the tangent is
+    horizontal at both ends and a Ramp concatenates with a Line without a kink.
+    """
+
+    run: float
+    rise: float
+    min_radius: float = DEFAULT_MIN_RADIUS
+    samples: int = 2001
+
+    _u_table: np.ndarray = field(default=None, repr=False, compare=False)
+    _s_table: np.ndarray = field(default=None, repr=False, compare=False)
+    _length: float = field(default=0.0, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.run <= 0:
+            raise ValueError("Ramp run must be positive")
+        if self.rise == 0:
+            raise ValueError("Ramp rise must be non-zero; use a Line instead")
+
+        u = np.linspace(0.0, 1.0, self.samples)
+        y = self.run * u
+        z = self.rise * (3.0 * u**2 - 2.0 * u**3)
+        seg = np.hypot(np.diff(y), np.diff(z))
+        s = np.concatenate([[0.0], np.cumsum(seg)])
+        object.__setattr__(self, "_u_table", u)
+        object.__setattr__(self, "_s_table", s)
+        object.__setattr__(self, "_length", float(s[-1]))
+
+        r = self.min_radius_of_curvature()
+        if r < self.min_radius:
+            raise PathTooTightError(
+                f"Ramp(run={self.run}, rise={self.rise}) bends to a radius of "
+                f"{r:.2f} mm, below the minimum {self.min_radius} mm"
+            )
+
+    @property
+    def length(self) -> float:
+        return self._length
+
+    def _u(self, s: float) -> float:
+        return float(np.interp(s, self._s_table, self._u_table))
+
+    def point(self, s: float) -> Vec3:
+        u = self._u(s)
+        return np.array([0.0, self.run * u,
+                         self.rise * (3.0 * u**2 - 2.0 * u**3)])
+
+    def _slope(self, u: float) -> float:
+        return self.rise * (6.0 * u - 6.0 * u * u) / self.run
+
+    def tangent(self, s: float) -> Vec3:
+        return _unit(np.array([0.0, 1.0, self._slope(self._u(s))]))
+
+    def roll(self, s: float) -> float:
+        return 0.0
+
+    def curvature(self, s: float) -> float:
+        u = self._u(s)
+        d1 = self._slope(u)
+        d2 = self.rise * (6.0 - 12.0 * u) / (self.run * self.run)
+        return abs(d2) / (1.0 + d1 * d1) ** 1.5
+
+    def min_radius_of_curvature(self) -> float:
+        # curvature peaks at the ends, where the slope is zero
+        peak = abs(self.rise) * 6.0 / (self.run * self.run)
+        return math.inf if peak == 0.0 else 1.0 / peak
+
+    def stations(self, sag: float) -> list[float]:
+        r = self.min_radius_of_curvature()
+        if math.isinf(r):
+            return [0.0, self.length]
+        step = 2.0 * math.sqrt(max(2.0 * r * sag, 1e-12))
+        n = max(1, math.ceil(self.length / step))
+        return [self.length * i / n for i in range(n + 1)]
+
+    def end_transform(self) -> np.ndarray:
+        return translation(0.0, self.run, self.rise)
+
+
+# --------------------------------------------------------------------------
+
+
+class Path:
+    """Primitives laid end to end, queried in world coordinates by arc length."""
+
+    C0_TOL = 1e-9
+    C1_TOL = 1e-12
+
+    def __init__(self, primitives: Sequence[Primitive]) -> None:
+        if not primitives:
+            raise ValueError("a Path needs at least one primitive")
+        self.primitives = list(primitives)
+        self.transforms: list[np.ndarray] = []
+        self.starts: list[float] = []
+
+        matrix = np.eye(4)
+        travelled = 0.0
+        for prim in self.primitives:
+            self.transforms.append(matrix)
+            self.starts.append(travelled)
+            travelled += prim.length
+            matrix = matrix @ prim.end_transform()
+        self.length = travelled
+        self.end_transform = matrix
+
+        self._check_continuity()
+
+    @classmethod
+    def chain(cls, *primitives: Primitive) -> "Path":
+        return cls(primitives)
+
+    # -- queries ---------------------------------------------------------
+
+    def _locate(self, s: float) -> tuple[int, float]:
+        s = min(max(s, 0.0), self.length)
+        for i in range(len(self.primitives) - 1, -1, -1):
+            if s >= self.starts[i] - 1e-12:
+                local = min(s - self.starts[i], self.primitives[i].length)
+                return i, local
+        return 0, s
+
+    def point(self, s: float) -> Vec3:
+        i, local = self._locate(s)
+        p = self.primitives[i].point(local)
+        return (self.transforms[i] @ np.array([p[0], p[1], p[2], 1.0]))[:3]
+
+    def tangent(self, s: float) -> Vec3:
+        i, local = self._locate(s)
+        t = self.primitives[i].tangent(local)
+        return _unit(self.transforms[i][:3, :3] @ t)
+
+    def roll(self, s: float) -> float:
+        i, local = self._locate(s)
+        return self.primitives[i].roll(local)
+
+    def curvature(self, s: float) -> float:
+        i, local = self._locate(s)
+        return self.primitives[i].curvature(local)
+
+    def min_radius_of_curvature(self) -> float:
+        return min(p.min_radius_of_curvature() for p in self.primitives)
+
+    # -- stations --------------------------------------------------------
+
+    def stations(self, sag: float) -> list[float]:
+        """Arc-length positions to sample, §4.2.
+
+        Straight runs get their endpoints only. Every primitive boundary and
+        both path ends always get a station.
+        """
+        if sag <= 0:
+            raise ValueError("chord sag tolerance must be positive")
+        out: list[float] = []
+        for prim, start in zip(self.primitives, self.starts):
+            out.extend(start + local for local in prim.stations(sag))
+        out.append(self.length)
+
+        out.sort()
+        deduped = [out[0]]
+        for s in out[1:]:
+            if s - deduped[-1] > 1e-9:
+                deduped.append(s)
+        return deduped
+
+    # -- validation ------------------------------------------------------
+
+    def _check_continuity(self) -> None:
+        for i in range(len(self.primitives) - 1):
+            s = self.starts[i + 1]
+            before_p = self._world_point(i, self.primitives[i].length)
+            after_p = self._world_point(i + 1, 0.0)
+            gap = float(np.linalg.norm(before_p - after_p))
+            if gap > self.C0_TOL:
+                raise PathDiscontinuous(
+                    f"primitives {i} and {i + 1} are {gap:.3g} mm apart at s={s:.3f}"
+                )
+
+            before_t = self._world_tangent(i, self.primitives[i].length)
+            after_t = self._world_tangent(i + 1, 0.0)
+            dot = float(np.dot(before_t, after_t))
+            if dot < 1.0 - self.C1_TOL:
+                raise PathDiscontinuous(
+                    f"primitives {i} and {i + 1} kink at s={s:.3f}: "
+                    f"tangent dot {dot:.12f}"
+                )
+
+            roll_gap = abs(self.primitives[i].roll(self.primitives[i].length)
+                           - self.primitives[i + 1].roll(0.0))
+            if roll_gap > 1e-12:
+                raise PathDiscontinuous(
+                    f"primitives {i} and {i + 1} step in roll by {roll_gap:.3g} rad"
+                )
+
+    def _world_point(self, i: int, local: float) -> Vec3:
+        p = self.primitives[i].point(local)
+        return (self.transforms[i] @ np.array([p[0], p[1], p[2], 1.0]))[:3]
+
+    def _world_tangent(self, i: int, local: float) -> Vec3:
+        return _unit(self.transforms[i][:3, :3] @ self.primitives[i].tangent(local))
+
+    def check_curvature(self, min_radius: float) -> None:
+        """Re-check against the profile actually being swept, §4.1."""
+        for i, prim in enumerate(self.primitives):
+            r = prim.min_radius_of_curvature()
+            if r < min_radius:
+                raise PathTooTightError(
+                    f"primitive {i} ({type(prim).__name__}) bends to {r:.2f} mm, "
+                    f"below the minimum {min_radius:.2f} mm"
+                )

@@ -1,5 +1,6 @@
 .venv/
 .idea/
+out/
 phase0/out/
 __pycache__/
 *.pyc
