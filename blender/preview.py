@@ -16,10 +16,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
-from blender.boolean import union  # noqa: E402
-from blender.build import reset_scene, to_object  # noqa: E402
-from parts import CATALOGUE, HUBS, build  # noqa: E402
-from trackcore import DEFAULT  # noqa: E402
+from blender.build import reset_scene  # noqa: E402
+from blender.run import build_part  # noqa: E402
+from parts import CATALOGUE  # noqa: E402
 
 COLOURS = [
     (0.85, 0.36, 0.16, 1.0),
@@ -81,10 +80,7 @@ def main() -> int:
     spacing = args.spacing
     span = spacing * (len(names) - 1)
     for i, name in enumerate(names):
-        piece = build(name, DEFAULT)
-        objects = [to_object(solid, f"{name}_{k}", collection)
-                   for k, solid in enumerate(piece.solids)]
-        obj = union(objects, name=name) if piece.needs_union else objects[0]
+        obj = build_part(name, collection)
         obj.matrix_world = Matrix.Translation((i * spacing - span / 2.0,
                                                0.0, 0.0))
         obj.color = COLOURS[i % len(COLOURS)]
