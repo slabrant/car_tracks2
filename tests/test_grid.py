@@ -12,8 +12,8 @@ import math
 import numpy as np
 import pytest
 
-from parts import (CATALOGUE, GRID, HUBS, NOT_PARTS, PATHS, build, curve,
-                   port_frames)
+from parts import (CATALOGUE, GRAFTS, GRID, HUBS, NOT_PARTS, PATHS, build,
+                   curve, port_frames)
 from trackcore import DEFAULT, Arc, Line, Path, Ramp
 from trackcore.path import DEFAULT_PORT_CLEAR
 
@@ -27,13 +27,13 @@ LAP = DEFAULT.connector.lap_length + DEFAULT.connector.fit_clearance
 def test_the_catalogue_is_the_printable_set_only():
     assert len(CATALOGUE) == len(set(CATALOGUE))
     assert not (set(CATALOGUE) & NOT_PARTS)
-    assert set(CATALOGUE) == (set(PATHS) - NOT_PARTS) | set(HUBS)
+    assert set(CATALOGUE) == (set(PATHS) - NOT_PARTS) | set(HUBS) | set(GRAFTS)
 
 
 @pytest.mark.parametrize("name", CATALOGUE)
 def test_every_part_is_pure_data(name):
-    """A part is a path or an arm layout. Nothing else is allowed to be one."""
-    assert name in PATHS or name in HUBS
+    """A part is a path, an arm layout or a graft. Nothing else."""
+    assert name in PATHS or name in HUBS or name in GRAFTS
 
 
 # -- commensurability --------------------------------------------------------

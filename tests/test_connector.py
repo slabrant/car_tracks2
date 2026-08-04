@@ -11,7 +11,8 @@ import math
 import numpy as np
 import pytest
 
-from parts import CATALOGUE, HUBS, PATHS, build, straight, x_junction
+from parts import (CATALOGUE, GRAFTED, HUBS, PATHS, build, port_frames,
+                   straight, x_junction)
 from trackcore import DEFAULT, MATE, Arc, Path, connector, port_matrices
 from trackcore.connector import additions, cuts
 from trackcore.hub import direction
@@ -104,6 +105,16 @@ def test_a_straight_is_congruent_to_itself_flipped():
     flip = _flip_about(math.pi / 2.0)
     for group in (piece.solids, piece.cuts, piece.additions):
         assert _pool(group) == _pool([m.transformed(flip) for m in group])
+
+
+@pytest.mark.parametrize("name", sorted(GRAFTED))
+def test_a_grafted_part_is_not_congruent_to_itself_flipped(name):
+    """And that is fine. Turned over, a support is a foot (§5.6). Flip symmetry
+    is a property of ports, not of piece bodies."""
+    piece = build(name, DEFAULT)
+    flip = _flip_about(math.pi / 2.0)
+    assert _pool(piece.solids) != _pool(
+        [m.transformed(flip) for m in piece.solids])
 
 
 @pytest.mark.parametrize("name", sorted(HUBS))
@@ -251,8 +262,7 @@ def test_every_port_of_every_part_carries_identical_geometry(name):
     canonical_cuts = _pool([m for _l, m in cuts(DEFAULT)])
     canonical_adds = _pool([m for _l, m in additions(DEFAULT)])
 
-    matrices = (port_matrices(PATHS[name]()) if name in PATHS
-                else HUBS[name]().port_matrices())
+    matrices = port_frames(name)
     assert len(piece.cuts) == CUTS_PER_PORT * len(matrices)
     assert len(piece.additions) == ADDS_PER_PORT * len(matrices)
 

@@ -1,9 +1,10 @@
 # Car Tracks 2 — Specification
 
-Status: **Phases 0–4 complete.** The joint is calibrated against printed parts;
-swept pieces and junctions build, validate and export; every port of every part
-mates with every other; and the part set is laid out on a grid so loops close.
-Phase 5 (supports) not started. See §10.
+Status: **All phases complete (0–5).** The joint is calibrated against printed
+parts; swept pieces, junctions and supports build, validate and export; every
+port of every part mates with every other; the set is laid out on a grid so
+loops close; and bridges stand on legs made of ordinary track. See §10 for what
+each phase found, and §11 for what is still open.
 
 This document is the contract. If an implementation disagrees with it, the
 implementation is wrong. If this document is wrong, fix this document first,
@@ -528,13 +529,21 @@ The requirement lives at the **port** level: every port is genderless and
 flip-symmetric (§6.1). That is what makes a piece usable either way up, and it
 holds for a support exactly as it holds for a straight.
 
-Piece-level flip congruence — rotate the whole solid 180° about its long axis
-and get an identical vertex set, test 9.18 — is a *consequence* for pieces whose
-body happens to be symmetric about `z = 0`. It is a cheap, sharp test and worth
-keeping. It is not itself the requirement.
+Piece-level flip congruence — rotate the whole solid 180° about a horizontal
+axis and get an identical vertex set, test 9.18 — is a *consequence* for pieces
+whose body permits it. It is a cheap, sharp test and worth keeping. It is not
+itself the requirement.
 
-A support's body is not symmetric about `z = 0`, so it fails 9.18. It is still
-flippable, because flipping it is still legal and still useful:
+Note **which** axis. It is not the long axis in general: a straight turns about
+its centreline, a ramp about the cross axis through its midpoint, and a curve
+about the **bisector through its arc centre**. The axis always passes through
+the piece's vertex centroid, because a symmetry fixes the centroid and a 180°
+rotation fixes only its own axis — so the test searches for it there rather than
+assuming one. Assuming the long axis marks every curve as unflippable, which is
+simply wrong.
+
+A support has no flip axis at all, so it fails 9.18. It is still flippable in
+the sense that matters, because flipping it is still legal and still useful:
 
 | orientation | role |
 |---|---|
@@ -558,10 +567,19 @@ A complete bridge leg:
 
 Two part types in that picture, and one of them is a plain straight.
 
+**Two kinds of part have no flip axis**, and only gravity may decide it:
+
+- a **graft**, whose stub would otherwise point at the ceiling;
+- a **banked** curve, which turned over leans the wrong way through the turn.
+
+Phase 5 found the second one. Both are derived from the geometry — a graft by
+construction, a bank by a non-zero `bank` on some primitive — by
+`parts.declares_up`.
+
 No part carries a hand-written "not flippable" flag, and none may acquire one.
 A flag would be a place for a special case to hide; the geometry already says
-everything that needs saying, and test 9.32 checks that the parts failing 9.18
-are exactly the grafted ones and no others.
+everything that needs saying, and test 9.32 checks the derived set against an
+actual search for a flip axis.
 
 ---
 
@@ -980,9 +998,10 @@ failed.
   `fit_clearance` — a leg is a track piece, not a special part.
 - 9.31 A support turned over rests on a single plane — it is its own foot —
   and its through-ports stay mate-able in that orientation.
-- 9.32 The parts failing piece-level congruence (9.18) are exactly the grafted
-  ones, derived from geometry rather than from a flag. For each of those, every
-  port still mates after the flip. No part carries a "not flippable" flag.
+- 9.32 The parts with **no flip axis at all** are exactly those whose geometry
+  declares an up direction (§5.6) — the grafts and the banked curve. Derived,
+  not declared, and the axis is searched for rather than assumed. No part
+  carries a "not flippable" flag.
 
 **Whole-mesh and architecture**
 
@@ -1094,9 +1113,31 @@ is applied by boolean, and the previous prohibition was not achievable) and
 §7a, which replaces three scattered "this is the only sanctioned boolean"
 claims with one policy.
 
-**Phase 5 — supports.** Construction C: the grafted stub and `pier(height)`.
-No foot part — a support turned over is one. Tests 9.27–9.32. Output: a bridge
-that stands up on legs made of ordinary track.
+**Phase 5 — supports.** ✅ **COMPLETE**
+
+`trackcore/graft.py` builds a short straight with a stub square to it. The stub
+is the track profile swept downward with its `across` on world X and its `up` on
+world Y, which lands its rail flanges exactly on the body's own lower rails —
+the section simply continues downward and comes out an I-beam column. It stops
+at the deck surface so it never rises into the channel and stops a car.
+
+No foot part: a support turned over is one, resting on its own rails with its
+through-ports still at ordinary track height, so a leg can rise straight out of
+ground-level track. No `pier` part either — `pier(height)` returns a straight,
+because a genderless port means a track piece stood on end already *is* a
+structural column. That reuse is the payoff of §6.1, and it is why Phase 5 is
+the smallest phase in the project.
+
+The arithmetic closes: with `support_depth` derived as
+`(deck_height − quarter) / 2`, a stack of foot, **an ordinary
+`straight_quarter`**, and support lands exactly on the height the ramp
+delivers. Tested, because a bridge that ends 3 mm short is no bridge.
+
+Tests 9.27–9.32 pass, 348 in `tests/`. Every port mates: support to leg,
+support to junction, ramp to support.
+
+Phase 5 also corrected §5.6. A banked curve has no flip axis either, so **two**
+kinds of part declare an up direction, not one.
 
 **Phase 4 — the part set.** ✅ **COMPLETE**
 
@@ -1166,9 +1207,45 @@ affected section changes.
 - **A3. Junction arms are straight.** Curvature comes from attaching a curve
   piece to a port.
 
-Still open, deferrable to Phase 4:
+Still open:
 
-1. The standard radii, angles and lengths of the part set.
+1. **Print orientation, and `--orient auto`.** Measured, not yet acted on. A
+   piece can be printed on its side, with nothing to bridge, exactly when its
+   `across` direction is constant along the path — straights and the ramp,
+   which qualifies because its rise is a pitch and not a roll. Curves cannot:
+   `across` rotates with the arc. Junctions cannot either.
+
+   Everything else prints flat and bridges. Curves span 21.6 mm, uniform and
+   anchored on both sides, which is routine. Junctions are the problem, and the
+   fillet makes it worse by pushing the boundary away from the hub centre:
+
+   | part | unsupported span |
+   |---|---|
+   | y_junction | 27 mm |
+   | t_junction | 30 mm |
+   | x_junction | 33 mm |
+   | y_rounded | 35 mm |
+   | t_rounded | 42 mm |
+   | x_rounded | **53 mm** |
+
+   So `corner_radius` trades a car's turn quality against the underside finish,
+   steeply. Print square junctions for finish, rounded for feel, or support the
+   hub for both. The top face is unaffected either way.
+
+   **This does not weaken flip symmetry**, which is a property of the connector
+   and not of surface finish (§5.6). Every port still mates every port, either
+   way round, either face up. A rough underside only means you have a preferred
+   side, which is not what flip symmetry was ever buying.
+
+   Checked and discarded: splitting each piece at `z = 0` into two half-plates
+   printed face-down, zero overhangs, both driving faces bed-quality. It does
+   not work. The piece is symmetric under `(x, z) → (−x, −z)`, a *rotation*, so
+   no plane cuts it into congruent halves — and the detent ribs cross `z = 0`,
+   so that plane severs them.
+
+   To do: `--orient auto` in the exporter, laying straights and the ramp on
+   their side and the rest flat.
+
 2. Whether the deck wants a grip texture.
 3. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
    symmetry objection was simply wrong: flip symmetry is a property of ports,

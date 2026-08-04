@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
-from trackcore import (DEFAULT, Arc, Hub, Line, Path, Piece, Ramp, TrackConfig,
-                       applied, port_matrices, sweep)
+from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Path, Piece, Ramp,
+                       TrackConfig, applied, port_matrices, sweep)
 from trackcore.connector import validate as validate_connector
 from trackcore.path import DEFAULT_PORT_CLEAR
 
@@ -62,6 +62,16 @@ class Grid:
     def fillet(self) -> float:
         """Junction corner radius, and the turn radius a car follows through it."""
         return self.quarter
+
+    @property
+    def support_depth(self) -> float:
+        """How far a support's stub reaches below its deck.
+
+        Chosen so a stack lands exactly on `deck_height`: the foot's stub, a
+        quarter-module leg, and the support's stub. That is why the leg is an
+        ordinary `straight_quarter` and not a special part.
+        """
+        return (self.deck_height - self.quarter) / 2.0
 
 
 GRID = Grid()
@@ -141,6 +151,28 @@ def y_rounded(corner_radius: float = GRID.fillet) -> Hub:
     return y_junction(corner_radius)
 
 
+# -- Construction C ----------------------------------------------------------
+
+
+def support(length: float = GRID.half,
+            depth: float = GRID.support_depth) -> Graft:
+    """A short straight with a stub square to it, §5.5.
+
+    Turned over it is its own foot, so there is no separate foot part.
+    """
+    return Graft(length=length, depth=depth)
+
+
+def pier(height: float = GRID.quarter) -> Path:
+    """A leg, cut to length.
+
+    Deliberately just a straight. The port is genderless and identical
+    everywhere, so a track piece stood on end already *is* a structural column;
+    this name exists only so a layout reads as intended.
+    """
+    return straight(height)
+
+
 # -- registry ----------------------------------------------------------------
 
 
@@ -166,11 +198,39 @@ HUBS: dict[str, HubBuilder] = {
     "y_rounded": y_rounded,
 }
 
+GRAFTS: dict[str, Callable[..., Graft]] = {
+    "support": support,
+}
+
 NOT_PARTS = {"s_bend"}
 """In PATHS because tests need them; not in the printable set."""
 
+GRAFTED = set(GRAFTS)
+"""Parts with a stub."""
+
+
+def declares_up(name: str) -> bool:
+    """Does this part's geometry have a right way up? §5.6.
+
+    Two things do, and both because gravity already decided: a **graft**, whose
+    stub would otherwise point at the ceiling, and a **banked** curve, which
+    turned over leans the wrong way through the turn.
+
+    Derived, never declared. A part carrying a hand-written "not flippable"
+    flag would be a place for a special case to hide.
+    """
+    if name in GRAFTS:
+        return True
+    if name in PATHS:
+        return any(getattr(primitive, "bank", 0.0) != 0.0
+                   for primitive in PATHS[name]().primitives)
+    return False
+
 CATALOGUE: list[str] = ([n for n in sorted(PATHS) if n not in NOT_PARTS]
-                        + sorted(HUBS))
+                        + sorted(HUBS) + sorted(GRAFTS))
+
+DECLARES_UP: set[str] = {n for n in CATALOGUE if declares_up(n)}
+"""The parts with a right way up, and so with no flip axis. See declares_up."""
 
 
 def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:
@@ -179,6 +239,8 @@ def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:
         return port_matrices(PATHS[name](**kwargs), config)
     if name in HUBS:
         return HUBS[name](**kwargs).port_matrices(config)
+    if name in GRAFTS:
+        return GRAFTS[name](**kwargs).port_matrices(config)
     raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
 
 
@@ -204,6 +266,10 @@ def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
         hub = HUBS[name](**kwargs)
         solids = tuple(hub.solids(config))
         matrices = hub.port_matrices(config)
+    elif name in GRAFTS:
+        graft = GRAFTS[name](**kwargs)
+        solids = tuple(graft.solids(config))
+        matrices = graft.port_matrices(config)
     else:
         raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
 

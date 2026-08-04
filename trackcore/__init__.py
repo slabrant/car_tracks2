@@ -11,6 +11,7 @@ and Construction B (junctions) in `hub.py`. Connectors are Phase 3.
 from .config import DEFAULT, Body, Connector, Tolerances, TrackConfig
 from .connector import MATE, applied, port_matrix
 from .edge_unit import PROFILE_VERTS, EdgeUnit, profile, profile_area
+from .graft import Graft, GraftInvalid, leg_length
 from .frames import DegenerateFrame, Frames
 from .frames import build as build_frames
 from .hub import Arm, Hub, HubInvalid
@@ -25,6 +26,7 @@ __all__ = [
     "Frames", "build_frames", "DegenerateFrame",
     "MeshData", "Piece", "prism", "read_stl", "write_stl",
     "Hub", "Arm", "HubInvalid",
+    "Graft", "GraftInvalid", "leg_length",
     "Path", "Line", "Arc", "Ramp", "PathTooTightError", "PathDiscontinuous",
     "sweep", "expected_volume", "port_matrices",
     "applied", "port_matrix", "MATE",
