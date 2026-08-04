@@ -1120,10 +1120,23 @@ in `path.DEFAULT_PORT_CLEAR`:
 
 > **The cross-section must not roll, or pitch, inside a lap zone.**
 
-The connector's cut tools are flat boxes aligned to the port frame (§6.6). A
-banked 90° curve had reached six degrees of bank where the notches bite, so
+The connector's cut tools are flat boxes aligned to the port frame (§6.6). Two
+parts broke this, in different ways.
+
+A banked 90° curve had reached six degrees of bank where the notches bite, so
 they sliced the tilted section at the wrong height on each rail and the piece
-came out **genus 3**. Horizontal curvature is harmless — it moves the section
+came out **genus 3**. That one at least failed §7.
+
+The ramp did not. A smoothstep's vertical curvature is greatest at its *ends*,
+so the section had pitched twelve degrees where the cuts land; they took a slot
+clean through the deck and interrupted both rails. The result was still one
+component, still watertight, and **passed every §7 rule**. It was caught by
+eye, in a render, which is not a method.
+
+That is the important lesson of Phase 4, and it generalises past this bug:
+**validation proves a mesh is manifold, not that it is the mesh you wanted.**
+So the rule is enforced on the *path*, before any mesh exists — see
+`tests/test_grid.py::test_a_bare_ramp_pitches_inside_its_lap_zone`. Horizontal curvature is harmless — it moves the section
 sideways, not in z, and a notch removes everything below the lap plane whatever
 its lateral position. Roll and vertical curvature are not.
 

@@ -14,7 +14,7 @@ import pytest
 
 from parts import (CATALOGUE, GRID, HUBS, NOT_PARTS, PATHS, build, curve,
                    port_frames)
-from trackcore import DEFAULT, Arc, Line, Path
+from trackcore import DEFAULT, Arc, Line, Path, Ramp
 from trackcore.path import DEFAULT_PORT_CLEAR
 
 TOL = 1e-9
@@ -139,6 +139,28 @@ def test_the_lap_zone_at_every_port_is_free_of_vertical_curvature(name):
         for probe in (float(s), float(path.length - s)):
             rise = abs(float(path.tangent(probe)[2]))
             assert rise < 1e-9, f"{name} pitches at s={probe:.2f}"
+
+
+def test_a_bare_ramp_pitches_inside_its_lap_zone():
+    """The bug this rule exists for, pinned.
+
+    A smoothstep's vertical curvature is greatest at its **ends** — exactly
+    where the connector reaches in. Without flat leads the section has pitched
+    twelve degrees by the time the flat cut boxes bite, and they slice a slot
+    clean through the deck and interrupt both rails.
+
+    The damning part: that broken piece is still one component, still watertight,
+    still passes every §7 rule. Validation cannot tell "manifold" from
+    "correct", so this rule is enforced on the *path*, before any mesh exists.
+    """
+    bare = Path.chain(Ramp(run=84.0, rise=34.0))
+    pitch = max(abs(float(bare.tangent(float(s))[2]))
+                for s in np.linspace(0.0, LAP, 12))
+    assert pitch > 0.1, "expected a bare ramp to pitch where the connector bites"
+
+    fitted = PATHS["ramp"]()
+    assert max(abs(float(fitted.tangent(float(s))[2]))
+               for s in np.linspace(0.0, LAP, 12)) < 1e-9
 
 
 def test_a_banked_arc_reaches_its_full_bank_in_the_middle():
