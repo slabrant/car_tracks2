@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from parts import CATALOGUE, curve, ramp, s_bend, straight
+from parts import PATHS, curve, ramp, s_bend, straight
 from trackcore import (DEFAULT, Arc, Line, MeshData, Path, PathTooTightError,
                        TrackConfig, check, expected_volume, profile_area, sweep)
 from trackcore.config import Body, Tolerances
@@ -65,9 +65,9 @@ def test_tightening_the_sag_tolerance_converges_on_the_ideal():
 # -- §7 on every part --------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", sorted(CATALOGUE))
-def test_every_part_is_a_valid_solid(name):
-    stats = check(sweep(CATALOGUE[name]()), name=name)
+@pytest.mark.parametrize("name", sorted(PATHS))
+def test_every_swept_part_is_a_valid_solid(name):
+    stats = check(sweep(PATHS[name]()), name=name)
     assert stats["components"] == 1.0
     assert stats["euler"] == 2.0
     assert stats["volume_mm3"] > 0.0

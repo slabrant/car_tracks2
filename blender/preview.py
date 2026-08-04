@@ -16,9 +16,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
+from blender.boolean import union  # noqa: E402
 from blender.build import reset_scene, to_object  # noqa: E402
-from parts import CATALOGUE  # noqa: E402
-from trackcore import DEFAULT, sweep  # noqa: E402
+from parts import CATALOGUE, HUBS, build  # noqa: E402
+from trackcore import DEFAULT  # noqa: E402
 
 COLOURS = [
     (0.85, 0.36, 0.16, 1.0),
@@ -68,16 +69,23 @@ def main() -> int:
     parser.add_argument("--azimuth", type=float, default=-60.0)
     parser.add_argument("--elevation", type=float, default=42.0)
     parser.add_argument("--scale", type=float, default=380.0)
+    parser.add_argument("--only", default=None,
+                        help="comma-separated part names")
+    parser.add_argument("--spacing", type=float, default=90.0)
     args = parser.parse_args(argv)
 
     from mathutils import Matrix
 
+    names = args.only.split(",") if args.only else CATALOGUE
     collection = reset_scene()
-    spacing = 90.0
-    for i, name in enumerate(sorted(CATALOGUE)):
-        mesh_data = sweep(CATALOGUE[name](), DEFAULT)
-        obj = to_object(mesh_data, name, collection)
-        obj.matrix_world = Matrix.Translation((i * spacing - 1.5 * spacing,
+    spacing = args.spacing
+    span = spacing * (len(names) - 1)
+    for i, name in enumerate(names):
+        piece = build(name, DEFAULT)
+        objects = [to_object(solid, f"{name}_{k}", collection)
+                   for k, solid in enumerate(piece.solids)]
+        obj = union(objects, name=name) if piece.needs_union else objects[0]
+        obj.matrix_world = Matrix.Translation((i * spacing - span / 2.0,
                                                0.0, 0.0))
         obj.color = COLOURS[i % len(COLOURS)]
 

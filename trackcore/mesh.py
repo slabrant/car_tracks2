@@ -18,6 +18,23 @@ Pt2 = tuple[float, float]
 
 
 @dataclass(frozen=True)
+class Piece:
+    """One printable part, as the solids that make it up.
+
+    Construction A yields a single solid and needs no boolean. Construction B
+    and C yield several overlapping solids to be unioned, under §5.3's
+    obligation to re-run every §7 check on the result.
+    """
+
+    name: str
+    solids: tuple["MeshData", ...]
+
+    @property
+    def needs_union(self) -> bool:
+        return len(self.solids) > 1
+
+
+@dataclass(frozen=True)
 class MeshData:
     """An indexed polygon mesh, in millimetres, wound CCW seen from outside."""
 
@@ -119,6 +136,31 @@ def is_simple(poly: Sequence[Pt2], tol: float = 1e-12) -> bool:
             if ((d1 > tol) != (d2 > tol)) and ((d3 > tol) != (d4 > tol)):
                 return False
     return True
+
+
+def prism(poly: Sequence[Pt2], z0: float, z1: float) -> MeshData:
+    """Extrude a CCW polygon in the XY plane between two heights.
+
+    Manifold by construction: side quads plus two n-gon caps. §5.3 builds the
+    junction slabs out of these.
+    """
+    if z1 <= z0:
+        raise ValueError(f"degenerate extrusion {z0} -> {z1}")
+    n = len(poly)
+    if n < 3:
+        raise ValueError("a prism needs at least 3 points")
+    if shoelace(poly) <= 0:
+        raise ValueError("prism polygon must be CCW in (x, y)")
+
+    lo = np.array([(x, y, z0) for (x, y) in poly], dtype=np.float64)
+    hi = np.array([(x, y, z1) for (x, y) in poly], dtype=np.float64)
+
+    faces: list[list[int]] = [list(range(n - 1, -1, -1)),          # -Z cap
+                              [n + i for i in range(n)]]           # +Z cap
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, n + j, n + i])
+    return MeshData(verts=np.vstack([lo, hi]), faces=faces)
 
 
 # --------------------------------------------------------------------------

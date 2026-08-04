@@ -1,7 +1,8 @@
 # Car Tracks 2 — Specification
 
-Status: **Phases 0 and 1 complete.** The joint is calibrated against printed
-parts and swept pieces build, validate and export. Phases 2–4 not started.
+Status: **Phases 0, 1 and 2 complete.** The joint is calibrated against printed
+parts; swept pieces and junctions build, validate and export. Phase 3
+(connectors), Phase 4 (the part set) and Phase 5 (supports) not started.
 See §10.
 
 This document is the contract. If an implementation disagrees with it, the
@@ -423,16 +424,29 @@ defect.
 Build as prisms and union:
 
 ```
-deck prism  : deck region,   z ∈ [−half_deck,   +half_deck  ]
+deck prism  : the outline,      z ∈ [−half_deck,   +half_deck  ]
 rail prisms : each rail region, z ∈ [−half_height, +half_height]   (full height)
 ```
 
-Rail prisms span the **full** height, not just above and below the deck. Their
-overlap with the deck prism is then volumetric rather than face-to-face, which
-removes the coincident-face condition that generated non-manifold results in v1.
-Additionally inset the deck region by `rail_thickness / 2` **on rail-covered
-edges only**, leaving port-face edges at full extent, so no vertical faces are
-coplanar either.
+Rail prisms span the **full** height, not just above and below the deck, so
+their overlap with the deck prism is volumetric rather than face-to-face.
+
+**The deck slab uses the outline itself — do not inset it.** An earlier version
+of this section called for insetting the deck by `rail_thickness / 2` along
+rail-covered edges, reasoning that coplanar vertical faces are what generated
+v1's non-manifold results. That trades one degeneracy for a worse one. An inset
+boundary lands *inside* the rail's port-cap face rather than on its edge, so the
+solver must split that face and recompute the point from a different expression.
+On the X and T the two expressions agree bit for bit; on the Y, whose
+coordinates are irrational, they differed by 4e-7 mm and the union came out
+carrying sliver triangles — which passed every in-memory check and only surfaced
+after a float32 STL round trip.
+
+Using the outline directly means the deck and the rails consume the very same
+`chain()` output, so their shared vertices are identical floats rather than
+nearby ones. **Coplanar faces built from identical vertices are the easy case
+for a boolean; near-coincident vertices are the hard one.** Prefer exact
+coincidence to a near miss.
 
 This is the **only** place in the system where a boolean is permitted, and it
 carries a mandatory obligation: the union result is re-checked against every
@@ -869,12 +883,15 @@ failed.
   intersection points, to `1e-9`.
 - 9.14 With `corner_radius = r > 0`, each fillet arc is tangent to both adjacent
   edges to `1e-9`.
-- 9.15 An X built as a hub and a straight built as a hub (`0°, 180°`) agree with
-  Construction A's straight on volume and bounding box to `1e-6`.
+- 9.15 A straight built as a hub (`0°, 180°`) agrees with Construction A's
+  straight on volume and bounding box to `1e-6`.
 - 9.16 Junction volume equals `deck_area × deck_thickness + Σ rail strip areas ×
   (rail_height_total − deck_thickness)`, to `1e-3` relative.
 - 9.17 An asymmetric arm layout raises rather than producing a non-flippable
-  part (§5.4).
+  part (§5.4). So does an angular gap over 180°, which no longer surrounds the
+  centre, and a port too close to its armpit.
+- 9.17a The deck slab and every rail slab share **bit-identical** boundary
+  vertices, and no two vertices of a slab lie within a weld tolerance.
 
 **Connector — the tests that were missing**
 
@@ -979,9 +996,25 @@ Two things worth recording:
   silently; an exported STL does not. `mesh.triangulate` ear-clips, and
   `tests/test_mesh.py` pins the defect so the cheap version cannot come back.
 
-**Phase 2 — Construction B.** `hub.py`, ear clipping, the prism union in
-`blender/boolean.py`. Tests 9.12–9.17, 9.24. Output: flat-ended X, T and Y, both
-square and filleted.
+**Phase 2 — Construction B.** ✅ **COMPLETE**
+
+`trackcore/hub.py` builds the plan outline, the chains, the fillets and the
+slabs; `blender/boolean.py` unions them. `parts/` gains X, T and Y in square and
+filleted variants — six entries, no new geometry code. Tests 9.12–9.17 and 9.24
+pass, 164 in total.
+
+Two things worth recording:
+
+- **The fillet adds material, it does not cut it.** A car turning from one arm
+  to the next hugs that armpit from the inside, so the arc is the surface it
+  slides along and `corner_radius` is its turn radius. Cutting instead of
+  adding produces a hub that pinches the turn rather than guiding it, and the
+  two look equally plausible on paper.
+- **The Y found a defect the X and T could not.** Its coordinates are
+  irrational, so two expressions for the same point disagree in the last bits
+  where the axis-aligned layouts agree exactly. See §5.3 on why the deck slab
+  is no longer inset. The lesson generalises: test the layout whose arithmetic
+  is not exact.
 
 **Phase 3 — connectors on everything.** `connector.py` applied at every port of
 both constructions. Tests 9.18–9.23. Output: pieces that actually click

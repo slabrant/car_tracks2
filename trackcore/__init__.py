@@ -4,15 +4,16 @@ docs/SPEC.md §8: **`trackcore` never imports bpy.** Not for purity, for feedbac
 speed. Every geometry bug the previous attempts shipped was invisible until
 somebody opened a viewport; here pytest finds them in under a second, headless.
 
-Phase 1 covers Construction A, the swept two-port pieces. Construction B
-(junctions) and connectors are later phases.
+Phases 1 and 2 are here: Construction A (swept two-port pieces) in `sweep.py`
+and Construction B (junctions) in `hub.py`. Connectors are Phase 3.
 """
 
 from .config import DEFAULT, Body, Connector, Tolerances, TrackConfig
 from .edge_unit import PROFILE_VERTS, EdgeUnit, profile, profile_area
 from .frames import DegenerateFrame, Frames
 from .frames import build as build_frames
-from .mesh import MeshData, read_stl, write_stl
+from .hub import Arm, Hub, HubInvalid
+from .mesh import MeshData, Piece, prism, read_stl, write_stl
 from .path import Arc, Line, Path, PathDiscontinuous, PathTooTightError, Ramp
 from .sweep import expected_volume, sweep
 from .validate import MeshInvalid, check, signed_volume
@@ -21,7 +22,8 @@ __all__ = [
     "DEFAULT", "Body", "Connector", "Tolerances", "TrackConfig",
     "EdgeUnit", "profile", "profile_area", "PROFILE_VERTS",
     "Frames", "build_frames", "DegenerateFrame",
-    "MeshData", "read_stl", "write_stl",
+    "MeshData", "Piece", "prism", "read_stl", "write_stl",
+    "Hub", "Arm", "HubInvalid",
     "Path", "Line", "Arc", "Ramp", "PathTooTightError", "PathDiscontinuous",
     "sweep", "expected_volume",
     "check", "signed_volume", "MeshInvalid",
