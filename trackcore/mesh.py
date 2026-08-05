@@ -8,6 +8,7 @@ converts it at the boundary.
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
 from typing import Iterable, Sequence
@@ -316,6 +317,85 @@ def triangulated_faces(mesh: MeshData) -> list[tuple[int, int, int]]:
     for face in mesh.faces:
         out.extend(triangulate(mesh.verts, face))
     return out
+
+
+# --------------------------------------------------------------------------
+# cross-sections
+# --------------------------------------------------------------------------
+
+
+def cross_section_area(mesh: MeshData, point, normal, tol: float = 1e-9,
+                       within: float | None = None) -> float:
+    """Area of the material where a plane cuts a closed mesh, mm².
+
+    §7 proves a mesh is *manifold*. It cannot tell you it is the mesh you
+    wanted: a ramp once shipped with a slot cut clean through its deck and
+    passed every rule, because a hole with walls is still watertight. Measuring
+    the section is how you check the shape rather than the topology.
+
+    No loop assembly. Each triangle that crosses the plane contributes one
+    directed segment, oriented by `normal × face_normal` so that material lies
+    to its left; the shoelace sum over all of them is the total enclosed area,
+    however many loops there are and whichever order they arrive in.
+
+    ``within`` bounds how far from ``point`` a segment may lie and still count.
+    A plane is infinite, so one cut square to a curve's tangent will also slice
+    the far side of the same curve and return two sections added together. Pass
+    a radius comfortably larger than the section and smaller than the distance
+    to anything else — it must not fall *through* a loop, only between loops.
+    """
+    point = np.asarray(point, dtype=np.float64)
+    normal = np.asarray(normal, dtype=np.float64)
+    normal = normal / np.linalg.norm(normal)
+
+    seed = np.array([1.0, 0.0, 0.0])
+    if abs(float(seed @ normal)) > 0.9:
+        seed = np.array([0.0, 1.0, 0.0])
+    u = seed - float(seed @ normal) * normal
+    u /= np.linalg.norm(u)
+    v = np.cross(normal, u)
+
+    total = 0.0
+    for face in mesh.faces:
+        for tri in triangulate(mesh.verts, face):
+            pts = mesh.verts[list(tri)]
+            height = (pts - point) @ normal
+            # `>= 0` is a tie-break, not a tolerance, and it matters. Treating
+            # a vertex *on* the plane as a crossing makes every triangle that
+            # touches it contribute a segment, so a cut landing exactly on a
+            # station ring counts the section twice — which it does whenever
+            # the ring count is even and you sample the middle. Classifying
+            # each vertex to one side leaves every triangle with 0 or 2
+            # crossings and no way to double count.
+            above = height >= 0.0
+            crossing = []
+            for i in range(3):
+                a, b = i, (i + 1) % 3
+                if above[a] != above[b]:
+                    t = height[a] / (height[a] - height[b])
+                    crossing.append(pts[a] + t * (pts[b] - pts[a]))
+            if len(crossing) != 2:
+                continue
+            start, end = crossing
+            if np.linalg.norm(end - start) <= tol:
+                continue
+
+            face_normal = np.cross(pts[1] - pts[0], pts[2] - pts[0])
+            length = float(np.linalg.norm(face_normal))
+            if length <= tol:
+                continue
+            along = np.cross(normal, face_normal / length)
+            if float((end - start) @ along) < 0.0:
+                start, end = end, start
+
+            x1, y1 = float((start - point) @ u), float((start - point) @ v)
+            x2, y2 = float((end - point) @ u), float((end - point) @ v)
+            if within is not None:
+                mid = math.hypot((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+                if mid > within:
+                    continue
+            total += x1 * y2 - x2 * y1
+    return abs(total) / 2.0
 
 
 # --------------------------------------------------------------------------

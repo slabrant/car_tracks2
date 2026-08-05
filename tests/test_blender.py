@@ -14,7 +14,8 @@ import subprocess
 import pytest
 
 from parts import CATALOGUE, HUBS, build
-from trackcore import DEFAULT, check, read_stl
+from trackcore import DEFAULT, check, profile_area, read_stl
+from trackcore.mesh import cross_section_area
 from trackcore.validate import signed_volume
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -129,3 +130,89 @@ def test_two_finished_parts_actually_fit_together(a, port_a, b, port_b):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "mate OK" in result.stdout
+
+
+# -- the parameter space, not just the default ------------------------------
+
+
+def test_the_catalogue_builds_at_every_joint_configuration():
+    """The test that would have caught the 45° arc.
+
+    Every real defect in this project was found by hand, and always for the
+    same reason: the suite built the catalogue at *one* configuration. A 45°
+    arc was non-manifold at every lap under 7.4 mm and nothing noticed, because
+    8.0 was the only lap anyone built. This walks the space.
+    """
+    result = subprocess.run(
+        [BLENDER, "--background", "--python", "blender/sweep_check.py"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "all valid" in result.stdout
+
+
+# -- the right shape, on the finished solid ---------------------------------
+
+
+def _tab_area(config=DEFAULT) -> float:
+    body, half = config.body, config.connector.fit_clearance / 2.0
+    return (2.0 * body.rail_thickness * (body.half_height - half)
+            + body.deck_thickness * (body.rail_inner - half))
+
+
+@pytest.mark.parametrize("name", CATALOGUE)
+def test_a_finished_port_keeps_exactly_its_two_quadrants(built, name):
+    """Measured on the exported solid, booleans and cleanup included.
+
+    §7 cannot tell a hole from a shape — a ramp once shipped with a slot cut
+    through its deck and passed every rule. Area can.
+    """
+    from parts import port_frames
+
+    mesh = read_stl(str(built / f"{name}.stl"))
+    for index, frame in enumerate(port_frames(name)):
+        forward = frame[:3, 1]
+        inside = frame[:3, 3] - 1.0 * forward          # inside the lap zone
+        area = cross_section_area(mesh, inside, forward, within=20.0)
+        assert area == pytest.approx(_tab_area(), rel=5e-3), (
+            f"{name} port {index} measures {area:.3f} mm², "
+            f"expected {_tab_area():.3f}"
+        )
+
+
+@pytest.mark.parametrize("name", CATALOGUE)
+def test_a_finished_body_is_still_full_track(built, name):
+    """Past the joint, a piece must be its whole section again.
+
+    Two things make picking the place to measure less obvious than it sounds.
+
+    Cut square to the **local tangent**, not to the port's: on a 48 mm arc the
+    tangent has turned ten degrees by the time you are clear of the joint, and
+    an oblique cut reads `1/cos` too large — 1.5 %, enough to look like a defect.
+
+    And "clear of the joint" is further along a curve than the lap length says.
+    A notch's back is a *flat* plane while the piece curves away from it, so it
+    bites deeper on the inside of a turn: on a 48 mm arc a 6.15 mm notch reaches
+    8.2 mm along the inner edge and only 4.9 mm along the outer. Measuring at
+    the midpoint sidesteps the whole question.
+    """
+    from parts import PATHS, port_frames
+
+    mesh = read_stl(str(built / f"{name}.stl"))
+
+    if name in PATHS:
+        path = PATHS[name]()
+        middle = path.length / 2.0
+        point, normal = path.point(middle), path.tangent(middle)
+    else:
+        # hub and graft arms are straight, so the flat notch is exact there —
+        # and a graft's midpoint is where its stub is, which is not full track
+        reach = DEFAULT.connector.lap_length + DEFAULT.connector.fit_clearance
+        frame = port_frames(name)[0]
+        normal = frame[:3, 1]
+        point = frame[:3, 3] - (reach + 2.0) * normal
+
+    area = cross_section_area(mesh, point, normal, within=20.0)
+    assert area == pytest.approx(profile_area(DEFAULT.body), rel=5e-3), (
+        f"{name} measures {area:.3f} mm² clear of its joint"
+    )

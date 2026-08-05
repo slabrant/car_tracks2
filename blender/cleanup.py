@@ -43,6 +43,13 @@ def clean(obj, tolerance: float = WELD_TOLERANCE, smallest_feature: float = 0.15
     mesh.from_mesh(obj.data)
     bmesh.ops.remove_doubles(mesh, verts=mesh.verts[:], dist=tolerance)
     bmesh.ops.dissolve_degenerate(mesh, dist=tolerance, edges=mesh.edges[:])
+
+    # a solver can leave a vertex that no face uses. It carries nothing and STL
+    # cannot even express it, but it is junk and §7 rightly refuses it.
+    loose = [vertex for vertex in mesh.verts if not vertex.link_faces]
+    if loose:
+        bmesh.ops.delete(mesh, geom=loose, context="VERTS")
+
     bmesh.ops.recalc_face_normals(mesh, faces=mesh.faces[:])
     mesh.to_mesh(obj.data)
     mesh.free()

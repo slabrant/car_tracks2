@@ -52,13 +52,16 @@ def signed_volume(mesh: MeshData) -> float:
     return total / 6.0
 
 
-def count_components(n_verts: int, edges) -> int:
+def count_components(vertices, edges) -> int:
     """Number of connected components, by union-find over the edge set.
 
     A plate holding several separate solids is legitimate; it just has an Euler
     characteristic of 2 per solid rather than 2 overall.
+
+    ``vertices`` is the set of indices that some face actually uses. Loose
+    vertices are reported separately and must not be counted here.
     """
-    parent = list(range(n_verts))
+    parent = {index: index for index in vertices}
 
     def find(i: int) -> int:
         while parent[i] != i:
@@ -67,11 +70,13 @@ def count_components(n_verts: int, edges) -> int:
         return i
 
     for a, b in edges:
+        if a not in parent or b not in parent:
+            continue
         ra, rb = find(a), find(b)
         if ra != rb:
             parent[ra] = rb
 
-    return len({find(i) for i in range(n_verts)})
+    return len({find(i) for i in parent})
 
 
 def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
@@ -127,11 +132,21 @@ def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
         )
 
     # 6. watertight, genus 0 per connected component
-    v = len(mesh.verts)
+    referenced = {index for face in mesh.faces for index in face}
+    loose = len(mesh.verts) - len(referenced)
+    if loose:
+        problems.append(
+            f"{loose} vertex/vertices belong to no face"
+        )
+
+    # counted over the *face graph*, not over every stored vertex. A vertex no
+    # face uses is junk, and counting it as its own component turns a stray
+    # point into a baffling Euler error instead of the plain statement above.
+    v = len(referenced)
     e = len(undirected)
     f = len(mesh.faces)
     euler = v - e + f
-    components = count_components(v, undirected.keys())
+    components = count_components(referenced, undirected.keys())
     if euler != 2 * components:
         problems.append(
             f"Euler characteristic V-E+F = {euler}, expected {2 * components} "

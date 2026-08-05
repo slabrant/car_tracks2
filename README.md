@@ -150,7 +150,7 @@ trackcore/     the geometry. Pure Python + numpy, never imports bpy.
 
 parts/         the catalogue. Data only — a path or an arm layout, plus the grid.
 blender/       the only place bpy appears: build, boolean, cleanup, export, renders
-tests/         343 tests. Run with ./.venv/bin/python -m pytest tests/ -q
+tests/         429 tests. Run with ./.venv/bin/python -m pytest tests/ -q
 phase0/        calibration: the comb, and how to read it
 docs/SPEC.md   why everything is the way it is
 out/           generated. Not tracked.
