@@ -79,18 +79,23 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     """Material added beyond the port plane: the two tabs and their ribs."""
     body, connector = config.body, config.connector
     hw, ri = body.half_width, body.rail_inner
-    hh, hd = body.half_height, body.half_deck
+    hh = body.half_height
     lap, clear = connector.lap_length, connector.fit_clearance
     zf = clear / 2.0          # lap plane offset
     xs = clear / 2.0          # centreline slot half-width
     d, dh = connector.detent_offset, connector.detent_height
 
     return [
-        # the (+x, +z) and (-x, -z) quadrants, running past the port plane
+        # The (+x, +z) and (-x, -z) quadrants, running past the port plane. On
+        # a U-channel the deck lies wholly below the split plane, so it belongs
+        # entirely to the lower quadrant and is never cut in z — no thin
+        # tongues. The price is an asymmetric pair: the upper tab is rail only,
+        # the lower tab is rail plus half the deck. Both ports carry one of
+        # each, so the two mating pieces are still balanced.
         ("tab_rail_px", box((ri, -EPS, zf), (hw, lap, hh))),
-        ("tab_deck_px", box((xs, -EPS, zf), (ri + EPS, lap, hd))),
         ("tab_rail_nx", box((-hw, -EPS, -hh), (-ri, lap, -zf))),
-        ("tab_deck_nx", box((-ri - EPS, -EPS, -hd), (-xs, lap, -zf))),
+        ("tab_deck_nx", box((-ri - EPS, -EPS, body.deck_bottom),
+                            (-xs, lap, body.deck_top))),
         # detent ribs, inset from the rail inner face so they do not rub along
         # the mating piece's deck edge
         ("rib_px", prism_yz(

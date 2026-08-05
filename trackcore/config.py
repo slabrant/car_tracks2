@@ -13,7 +13,20 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Body:
-    """The track cross-section, §2. Measured against real track in v1."""
+    """The track cross-section, §2. A **U-channel**: deck at the bottom, rails
+    the full height at both edges.
+
+    The outer envelope and the material are unchanged from the earlier
+    symmetric I-section (24 x 4.7, 41.52 mm²). What changed is where the
+    material sits, and it is worth being clear that this was a printing
+    decision before it was a structural one: nothing with rails below the deck
+    can lie flat on a bed, which cost a channel-width bridge on every curve and
+    twice that on a rounded X. A U lies flat and bridges nothing.
+
+    It happens to be better anyway. Same material, the guide lip above the deck
+    doubles, and the section is stiffer because the I wasted its deck at the
+    neutral axis.
+    """
 
     width_outer: float = 24.0
     rail_thickness: float = 1.2
@@ -33,8 +46,19 @@ class Body:
         return self.rail_height_total / 2.0
 
     @property
-    def half_deck(self) -> float:
-        return self.deck_thickness / 2.0
+    def deck_bottom(self) -> float:
+        """The bed face. `z = 0` is the section's mid-height, not the deck."""
+        return -self.half_height
+
+    @property
+    def deck_top(self) -> float:
+        """The driving surface."""
+        return -self.half_height + self.deck_thickness
+
+    @property
+    def guide_height(self) -> float:
+        """How far the rails stand above the driving surface."""
+        return self.half_height - self.deck_top
 
     @property
     def channel_width(self) -> float:
@@ -49,6 +73,11 @@ class Body:
             raise ValueError("rails too thick for the track width")
         if self.deck_thickness >= self.rail_height_total:
             raise ValueError("deck must be thinner than the rail height")
+        if self.deck_top >= 0.0:
+            raise ValueError(
+                "the deck must sit wholly below the section mid-height, or the "
+                "connector's diagonal split would cut through it (§6.2)"
+            )
 
 
 @dataclass(frozen=True)

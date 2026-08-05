@@ -41,9 +41,9 @@ class Graft:
         return Path.chain(Line(self.length))
 
     def stub_path(self, config: TrackConfig = DEFAULT) -> Path:
-        """The stub starts at the deck surface so it never rises into the
+        """The stub starts at the driving surface so it never rises into the
         channel, where it would block a car."""
-        return Path.chain(Line(config.body.half_deck + self.depth))
+        return Path.chain(Line(config.body.deck_top + self.depth))
 
     def stub_transform(self, config: TrackConfig = DEFAULT) -> np.ndarray:
         """Place the stub: sweeping downward, section standing across the track.
@@ -58,7 +58,7 @@ class Graft:
         matrix[:3, 0] = (1.0, 0.0, 0.0)     # local across -> world +X
         matrix[:3, 1] = (0.0, 0.0, -1.0)    # local tangent -> world -Z
         matrix[:3, 2] = (0.0, 1.0, 0.0)     # local up -> world +Y
-        matrix[:3, 3] = (0.0, self.length / 2.0, config.body.half_deck)
+        matrix[:3, 3] = (0.0, self.length / 2.0, config.body.deck_top)
         return matrix
 
     # -- validation ------------------------------------------------------

@@ -37,6 +37,7 @@ def test_profile_bounding_box_is_the_track_section():
 
 
 def test_profile_area_is_two_rails_plus_the_deck():
+    """Unchanged from the I-section: same envelope, same material, moved."""
     rails = 2 * BODY.rail_thickness * BODY.rail_height_total
     deck = BODY.channel_width * BODY.deck_thickness
     assert profile_area(BODY) == pytest.approx(rails + deck, abs=1e-12)
@@ -45,10 +46,26 @@ def test_profile_area_is_two_rails_plus_the_deck():
 # -- 9.2 ---------------------------------------------------------------------
 
 
-def test_profile_is_symmetric_about_both_axes():
+def test_profile_is_symmetric_about_the_centreline_only():
+    """A U-channel is mirror-symmetric in x and deliberately not in z. The
+    earlier I-section was symmetric in both, which is what made a piece
+    flippable — and what stopped anything lying flat on a print bed."""
     pts = {(round(x, 12), round(z, 12)) for x, z in profile(BODY)}
     assert {(-x, z) for x, z in pts} == pts
-    assert {(x, -z) for x, z in pts} == pts
+    assert {(x, -z) for x, z in pts} != pts
+
+
+def test_the_deck_sits_wholly_below_the_section_mid_height():
+    """§6.2 depends on it: the connector's split plane is z = 0, so a deck that
+    straddled it would be cut into thin tongues."""
+    assert BODY.deck_top < 0.0
+    assert BODY.deck_bottom == pytest.approx(-BODY.half_height, abs=1e-12)
+
+
+def test_the_guide_lip_stands_clear_of_the_driving_surface():
+    assert BODY.guide_height == pytest.approx(
+        BODY.rail_height_total - BODY.deck_thickness, abs=1e-12)
+    assert BODY.guide_height > BODY.deck_thickness
 
 
 # -- 9.3 ---------------------------------------------------------------------
@@ -59,7 +76,7 @@ def test_profile_is_exactly_two_edge_units():
     minus = {(round(x, 12), round(z, 12)) for x, z in EdgeUnit(BODY, -1).points()}
     pts = {(round(x, 12), round(z, 12)) for x, z in profile(BODY)}
 
-    assert len(plus) == 6 and len(minus) == 6
+    assert len(plus) == 4 and len(minus) == 4
     assert plus | minus == pts
     assert not (plus & minus)
 

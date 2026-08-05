@@ -1,6 +1,7 @@
 # Car Tracks 2 — Specification
 
-Status: **Phases 0–5 complete; Phase 6 (printing) not started.** The joint is calibrated against printed
+Status: **U-channel section. Phases 1–5 rebuilt on it and green; Phase 0
+recalibration and Phase 6 (printing) outstanding.** The joint is calibrated against printed
 parts; swept pieces, junctions and supports build, validate and export; every
 port of every part mates with every other; the set is laid out on a grid so
 loops close; and bridges stand on legs made of ordinary track. See §10 for what
@@ -128,6 +129,32 @@ Binding. Do not silently redefine.
 ---
 
 ## 2. The edge unit and the derived profile
+
+The section is a **U-channel**: deck at the bottom, rails the full height at
+both edges.
+
+It was an I — rails above *and* below the deck — up to tag `v1.0-i-profile`,
+and that symmetry is what made a piece flippable. It was also what stopped
+anything lying flat on a print bed, which cost a channel-width bridge on every
+curve and twice that across a rounded X hub (§11.1). A U lies flat and bridges
+nothing.
+
+The change is close to free, which is why it was worth making late:
+
+| | I-section | U-channel |
+|---|---|---|
+| envelope, material | 24 × 4.7, 41.52 mm² | identical |
+| guide lip above the deck | 1.65 mm | **3.30 mm** |
+| deck at a joint | split into two 0.7 mm blades | **full thickness** |
+| second moment | 25.7 mm⁴ | **48.1 mm⁴** |
+| section modulus, bottom fibre | 10.9 mm³ | **41.9 mm³** |
+| bridging when printed | up to 53 mm | **none** |
+
+The I wasted its deck at the neutral axis, where material does least. Moving it
+to the bottom nearly doubles stiffness for the same filament and roughly
+quadruples strength where a sagging bridge deck needs it.
+
+What it costs is flip symmetry — see §5.6 and §6.1.
 
 Parameters. Defaults carried from v1's `track_config.json` — these were measured
 against real track and are trusted.
@@ -520,67 +547,40 @@ two stubs. For heights between increments, `pier(height)` is a
 single-piece leg cut to length: same port, no new geometry, just different path
 data.
 
-### 5.6 What "flippable" actually means
+### 5.6 Flippability, and why it is gone
 
-An earlier draft of this section carved supports out as a deliberate exception
-to flip symmetry. That was wrong, and it is recorded here because the mistake
-came from testing the wrong thing rather than from getting the geometry wrong.
+Pieces used to be flippable: the section was symmetric about `z = 0`, so a piece
+turned over was the same piece. That is no longer true of anything. A U-channel
+inverted is a channel facing the floor.
 
-The requirement lives at the **port** level: every port is genderless and
-flip-symmetric (§6.1). That is what makes a piece usable either way up, and it
-holds for a support exactly as it holds for a straight.
+Recorded because it was load-bearing for a long time, and because what it was
+worth is easy to get wrong — earlier drafts of this section got it wrong twice.
 
-Piece-level flip congruence — rotate the whole solid 180° about a horizontal
-axis and get an identical vertex set, test 9.18 — is a *consequence* for pieces
-whose body permits it. It is a cheap, sharp test and worth keeping. It is not
-itself the requirement.
+**What flippability bought.** One thing: it *forced* `P` odd in z (§6.1), which
+is what gives the joint its vertical lock. It never *enabled* that —
+genderlessness permits it either way — it only made it impossible to choose
+otherwise. Beyond that: a piece could be put down either way up, which a channel
+makes self-evident anyway; and cars could run on either face, which no layout
+ever used.
 
-Note **which** axis. It is not the long axis in general: a straight turns about
-its centreline, a ramp about the cross axis through its midpoint, and a curve
-about the **bisector through its arc centre**. The axis always passes through
-the piece's vertex centroid, because a symmetry fixes the centroid and a 180°
-rotation fixes only its own axis — so the test searches for it there rather than
-assuming one. Assuming the long axis marks every curve as unflippable, which is
-simply wrong.
+**What it cost.** Rails below the deck, so nothing could lie flat on a bed; half
+the section's material parked at the neutral axis where it does least work; a
+deck split into 0.7 mm tongues at every joint; and a mirror-axis constraint on
+junction arm layouts.
 
-A support has no flip axis at all, so it fails 9.18. It is still flippable in
-the sense that matters, because flipping it is still legal and still useful:
+**What replaces it.** Nothing but vigilance. The Z-lock is now a decision rather
+than a consequence, so it is pinned by
+`tests/test_connector.py::test_the_joint_cannot_be_lifted_apart`, which lifts
+the mating piece and requires it to foul. Without that test a later edit could
+pick the plain vertical split — still perfectly genderless — and ship a joint
+that lifts straight apart.
 
-| orientation | role |
-|---|---|
-| stub down | **support** — grafted into the bridge, leg hanging below |
-| stub up | **foot** — the track section lies on the ground, leg plugs in above |
+**Junction arm layouts are no longer constrained.** §5.4's mirror-axis rule
+existed only to keep junctions flippable, so asymmetric layouts are now legal.
 
-**So there is no separate foot part.** A support turned over *is* the foot. Its
-own track section becomes the base, resting on the two lower rails for a
-`channel_width` × piece-length footprint, and its two through-ports stay usable
-at ground level, so a leg can rise straight out of ordinary ground-level track.
-
-A complete bridge leg:
-
-```
-   ground track ── support, stub up  (this is the foot)
-                        │
-                     leg: an ordinary straight, stood on end
-                        │
-   bridge deck ──── support, stub down
-```
-
-Two part types in that picture, and one of them is a plain straight.
-
-**Two kinds of part have no flip axis**, and only gravity may decide it:
-
-- a **graft**, whose stub would otherwise point at the ceiling;
-- a **banked** curve, which turned over leans the wrong way through the turn.
-
-Phase 5 found the second one. Both are derived from the geometry — a graft by
-construction, a bank by a non-zero `bank` on some primitive — by
-`parts.declares_up`.
-
-No part carries a hand-written "not flippable" flag, and none may acquire one.
-A flag would be a place for a special case to hide; the geometry already says
-everything that needs saying, and test 9.32 checks the derived set against an
-actual search for a flip axis.
+**A support is still its own foot** turned over: the stub points up and the
+piece rests on its rail tops. A narrower base than before, which Phase 6 should
+look at.
 
 ---
 
@@ -591,12 +591,16 @@ expressed in that port's own outward-pointing frame.
 
 ### 6.1 Derivation — read before touching connector code
 
-Two requirements:
+One requirement, and one decision.
 
-- **Genderless.** No male end and female end. Every port is identical, and a
-  port mates with a copy of itself rotated 180° about the vertical axis.
-- **Flippable.** A piece rotated 180° about a horizontal axis is the same part.
-  The track drives on either face.
+- **Genderless** (required). No male end and female end. Every port is
+  identical, and a port mates with a copy of itself rotated 180° about the
+  vertical axis.
+- **A vertical lock** (chosen). The joint must not lift apart.
+
+This section used to derive the port from *two* requirements, genderless and
+flippable. Flippability is gone (§5.6), so half of what follows is no longer a
+proof. It is a choice, and it is marked as one.
 
 Genderless is not a preference. **Junctions require it.** Gendering imposes
 alternating parity around any connected structure:
@@ -620,32 +624,35 @@ Genderless mating maps `x → −x`, and a tab must land in a notch:
 P(−x, z) = −P(x, z)                       (1)   odd in x
 ```
 
-Flipping maps `(x, z) → (−x, −z)` and must leave the part unchanged:
+Equation (1) is the whole of what is *forced*, and it has many solutions. Two
+matter:
+
+- `P = sign(x)` — a plain vertical split, uniform in z.
+- `P = sign(x)·sign(z)` — diagonally opposed tabs.
+
+Both are perfectly genderless. **Only the second locks vertically.** Under the
+first, at every x our material and the mate's sit side by side rather than
+stacked, so the joint lifts straight apart with no resistance whatever. So we
+impose, by choice:
 
 ```
-P(−x, −z) = P(x, z)                       (2)
+P(x, −z) = −P(x, z)                       (2)   odd in z — CHOSEN, not forced
 ```
 
-Substituting (1) into (2):
+`P` odd in x and odd in z gives **diagonally opposed tabs**: tabs in the
+`(+x,+z)` and `(−x,−z)` quadrants, notches in the other two. The port face is
+cut in half at `x = 0` and at `z = 0`, and each piece keeps two diagonally
+opposite quadrants.
 
-```
-P(x, −z) = −P(x, z)                       (3)   odd in z
-```
+Still true, and worth keeping because it killed several plausible sketches:
+**anything uniform in z cannot lock vertically.** That includes v1's dovetail
+tab and every tab-one-side/notch-other design. No choice of dimensions rescues
+them — they are genderless and they fall apart upward.
 
-`P` must be odd in x **and** odd in z. Two consequences, both load-bearing:
-
-- **Anything uniform in z is impossible.** Uniform in z means
-  `P(x, −z) = P(x, z)`, which with (3) forces `P ≡ 0` — a flat butt joint with
-  no interlock. So every interlock confined to the deck plane, or to any single
-  horizontal slab, cannot work. That includes v1's dovetail tab and every
-  tab-one-side/notch-other sketch. No choice of dimensions rescues them.
-- **The minimal solution is `P = sign(x)·sign(z)`:** tabs in the `(+x,+z)` and
-  `(−x,−z)` quadrants, notches in `(−x,+z)` and `(+x,−z)`. **Diagonally opposed
-  tabs.**
-
-The minimal solution is applied to the **whole cross-section**, not only to the
-rails: the port face is simply cut in half at `x = 0` and at `z = 0`, and each
-piece keeps two diagonally opposite quadrants.
+On a U-channel the deck lies **wholly below** `z = 0`, so the split never
+crosses it. The deck joins the lower quadrant at full thickness and the upper
+tab is rail only: asymmetric per port, balanced between the two that mate, and
+free of the 0.7 mm tongues the old symmetric section forced.
 
 ### 6.2 Geometry — the diagonal lap
 
@@ -1192,6 +1199,23 @@ Every part fits a 220 mm bed; the longest is the ramp at 192 mm.
 
 ---
 
+**The section change.** After Phase 5, the I-section was replaced by a
+U-channel and the whole of Phases 1–5 was rebuilt on it. Tagged
+`v1.0-i-profile` first, because that tag is the last point at which a piece can
+be turned over.
+
+It went better than a change that late has any right to. The three
+constructions never noticed — sweep, hub and graft do not care what the section
+is. `connector.py` lost a tool rather than gaining one, because the deck now
+sits wholly below the split plane and is never cut in z. What changed
+substantively was the *argument*: §6.1 used to derive the port from two
+requirements and now derives it from one plus a decision, so the vertical lock
+had to be pinned by a test rather than left to follow.
+
+Phase 0 needs redoing on the new section — `fit_clearance` was calibrated
+against the old joint — and that reprint is the natural place to settle
+`lap_length` at the same time.
+
 **Phase 6 — printing.** ⬜ **NOT STARTED**
 
 Everything so far produces a correct solid. This phase makes it a printable
@@ -1233,15 +1257,21 @@ affected section changes.
 
 Still open:
 
-1. **Print orientation, and `--orient auto`.** Measured, not yet acted on. A
-   piece can be printed on its side, with nothing to bridge, exactly when its
-   `across` direction is constant along the path — straights and the ramp,
-   which qualifies because its rise is a pitch and not a roll. Curves cannot:
-   `across` rotates with the arc. Junctions cannot either.
+1. **Print orientation, and `--orient auto`.** ~~The bridging problem.~~
+   **Largely solved by the U-channel section (§2)**, which lies flat on the bed
+   with rails standing up and bridges nothing, on every part. What follows is
+   the measurement that motivated the section change, kept because it is why
+   the change was worth making.
 
-   Everything else prints flat and bridges. Curves span 21.6 mm, uniform and
-   anchored on both sides, which is routine. Junctions are the problem, and the
-   fillet makes it worse by pushing the boundary away from the hub centre:
+   On the old I-section a piece could be printed on its side, with nothing to
+   bridge, exactly when its `across` direction was constant along the path —
+   straights and the ramp, which qualified because its rise is a pitch and not a
+   roll. Curves could not: `across` rotates with the arc. Junctions could not
+   either.
+
+   Everything else printed flat and bridged. Curves spanned 21.6 mm, uniform
+   and anchored on both sides, which is routine. Junctions were the problem, and
+   the fillet made it worse by pushing the boundary away from the hub centre:
 
    | part | unsupported span |
    |---|---|
@@ -1252,23 +1282,14 @@ Still open:
    | t_rounded | 42 mm |
    | x_rounded | **53 mm** |
 
-   So `corner_radius` trades a car's turn quality against the underside finish,
-   steeply. Print square junctions for finish, rounded for feel, or support the
-   hub for both. The top face is unaffected either way.
+   None of that survives the section change: a U lies flat, deck on the bed,
+   rails up, and there is nothing to bridge on any part.
 
-   **This does not weaken flip symmetry**, which is a property of the connector
-   and not of surface finish (§5.6). Every port still mates every port, either
-   way round, either face up. A rough underside only means you have a preferred
-   side, which is not what flip symmetry was ever buying.
-
-   Checked and discarded: splitting each piece at `z = 0` into two half-plates
-   printed face-down, zero overhangs, both driving faces bed-quality. It does
-   not work. The piece is symmetric under `(x, z) → (−x, −z)`, a *rotation*, so
-   no plane cuts it into congruent halves — and the detent ribs cross `z = 0`,
-   so that plane severs them.
-
-   To do: `--orient auto` in the exporter, laying straights and the ramp on
-   their side and the rest flat.
+   Still to do, and much smaller than it was: `--orient auto` in the exporter,
+   which now means little more than setting every part deck-down and adding a
+   brim. Worth confirming against a print that the rail tops are clean and that
+   the ramp — whose deck rises away from the bed — still wants to go on its
+   side.
 
 2. **Whether the deck wants a grip texture.** Open. It would be a profile
    change rather than a construction change — `edge_unit.py` owns the section,

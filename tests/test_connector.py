@@ -11,8 +11,7 @@ import math
 import numpy as np
 import pytest
 
-from parts import (CATALOGUE, GRAFTED, HUBS, PATHS, build, port_frames,
-                   straight, x_junction)
+from parts import CATALOGUE, HUBS, PATHS, build, port_frames, straight
 from trackcore import DEFAULT, MATE, Arc, Path, connector, port_matrices
 from trackcore.connector import additions, cuts
 from trackcore.hub import direction
@@ -46,25 +45,47 @@ def test_every_connector_tool_is_a_valid_solid():
         check(mesh, name=label)
 
 
-def test_the_port_pattern_is_odd_in_both_x_and_z():
-    """§6.1. P must be odd in x and odd in z; the minimal solution is
-    diagonally opposed tabs. Anything uniform in z forces P identically zero."""
-    flip = _flip_about(math.pi / 2.0)  # (x, y, z) -> (-x, y, -z)
-    for group in (cuts(DEFAULT), additions(DEFAULT)):
-        meshes = [mesh for _label, mesh in group]
-        assert _pool(meshes) == _pool([m.transformed(flip) for m in meshes]), (
-            "the port geometry is not invariant under (x, z) -> (-x, -z)"
+def test_the_joint_cannot_be_lifted_apart():
+    """The Z-lock, and the most important test in this file.
+
+    On the old flippable section this was a *corollary*: flip symmetry forced P
+    odd in z, and odd-in-z is what puts our material above the mate's on one
+    rail and below it on the other. Flippability is gone, so nothing forces it
+    any more. Genderless alone only forces P odd in **x**, and a plain vertical
+    split satisfies that while lifting straight apart with no resistance at
+    all.
+
+    So odd-in-z is now a deliberate choice, and a choice needs pinning. Lift the
+    mating piece and it must foul; press it down and it must foul.
+    """
+    lift = 1.5 * CONN.fit_clearance
+    ours = [(label, *mesh.bounds()) for label, mesh in additions(DEFAULT)]
+
+    for direction in (+1.0, -1.0):
+        shift = np.eye(4)
+        shift[2, 3] = direction * lift
+        theirs = [(f"mate:{label}", *mesh.transformed(shift @ MATE).bounds())
+                  for label, mesh in additions(DEFAULT)]
+        fouled = any(_overlap(a_lo, a_hi, b_lo, b_hi) > TOL
+                     for _a, a_lo, a_hi in ours
+                     for _b, b_lo, b_hi in theirs)
+        assert fouled, (
+            f"the joint pulls apart {'upward' if direction > 0 else 'downward'}; "
+            f"the port has lost its Z-lock"
         )
 
 
 def test_the_tabs_occupy_diagonally_opposite_quadrants():
+    """On a U-channel the deck lies wholly below the split plane, so it joins
+    the lower quadrant and the upper tab is rail only. Asymmetric by piece,
+    balanced between the two that mate."""
     by_name = dict(additions(DEFAULT))
-    for name in ("tab_rail_px", "tab_deck_px"):
-        lo, hi = by_name[name].bounds()
-        assert lo[0] > 0 and lo[2] > 0, f"{name} should be the (+x, +z) quadrant"
+    lo, _hi = by_name["tab_rail_px"].bounds()
+    assert lo[0] > 0 and lo[2] > 0, "tab_rail_px should be the (+x, +z) quadrant"
     for name in ("tab_rail_nx", "tab_deck_nx"):
-        lo, hi = by_name[name].bounds()
+        _lo, hi = by_name[name].bounds()
         assert hi[0] < 0 and hi[2] < 0, f"{name} should be the (-x, -z) quadrant"
+    assert "tab_deck_px" not in by_name, "the deck belongs to one quadrant only"
 
 
 def test_tabs_protrude_exactly_one_lap_length():
@@ -93,43 +114,6 @@ def test_the_two_notches_between_them_cut_the_centreline_slot():
     # and together they span the full height across that strip
     assert px_lo[2] < -BODY.half_height and nx_hi[2] > BODY.half_height
     assert px_hi[2] >= nx_lo[2], "the notches must overlap in z, not merely touch"
-
-
-# -- 9.18 --------------------------------------------------------------------
-
-
-def test_a_straight_is_congruent_to_itself_flipped():
-    """Rotate the whole piece 180° about its long axis. A gendered connector,
-    or one asymmetric in z, fails here."""
-    piece = build("straight_full", DEFAULT, length=84.0)
-    flip = _flip_about(math.pi / 2.0)
-    for group in (piece.solids, piece.cuts, piece.additions):
-        assert _pool(group) == _pool([m.transformed(flip) for m in group])
-
-
-@pytest.mark.parametrize("name", sorted(GRAFTED))
-def test_a_grafted_part_is_not_congruent_to_itself_flipped(name):
-    """And that is fine. Turned over, a support is a foot (§5.6). Flip symmetry
-    is a property of ports, not of piece bodies."""
-    piece = build(name, DEFAULT)
-    flip = _flip_about(math.pi / 2.0)
-    assert _pool(piece.solids) != _pool(
-        [m.transformed(flip) for m in piece.solids])
-
-
-@pytest.mark.parametrize("name", sorted(HUBS))
-def test_every_junction_is_congruent_to_itself_flipped(name):
-    """§5.4: flipping acts as a mirror in plan, so the layout's mirror axis is
-    the flip axis."""
-    hub = HUBS[name]()
-    axis = hub.mirror_axis()
-    assert axis is not None
-    piece = build(name, DEFAULT)
-    flip = _flip_about(axis)
-    for group in (piece.solids, piece.cuts, piece.additions):
-        assert _pool(group) == _pool([m.transformed(flip) for m in group]), (
-            f"{name} is not congruent under a flip about its mirror axis"
-        )
 
 
 # -- 9.19 --------------------------------------------------------------------
@@ -167,9 +151,9 @@ def test_the_lap_faces_clear_each_other_by_exactly_one_clearance():
 
 def test_the_centreline_halves_clear_each_other_by_exactly_one_clearance():
     by_name = dict(additions(DEFAULT))
-    ours = by_name["tab_deck_px"].bounds()[0][0]
-    theirs = by_name["tab_deck_px"].transformed(MATE).bounds()[1][0]
-    assert ours - theirs == pytest.approx(CONN.fit_clearance, abs=1e-12)
+    theirs = by_name["tab_deck_nx"].transformed(MATE).bounds()[0][0]
+    ours = by_name["tab_deck_nx"].bounds()[1][0]
+    assert theirs - ours == pytest.approx(CONN.fit_clearance, abs=1e-12)
 
 
 def test_every_tab_lands_inside_the_mating_notch():

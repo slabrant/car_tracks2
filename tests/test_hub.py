@@ -245,8 +245,8 @@ def test_a_hub_produces_one_deck_slab_and_one_rail_slab_per_arm(name, builder):
 def test_slabs_span_the_right_heights():
     hub = x_junction(0.0)
     deck, *rails = hub.solids()
-    assert deck.bounds()[0][2] == pytest.approx(-BODY.half_deck, abs=TOL)
-    assert deck.bounds()[1][2] == pytest.approx(+BODY.half_deck, abs=TOL)
+    assert deck.bounds()[0][2] == pytest.approx(BODY.deck_bottom, abs=TOL)
+    assert deck.bounds()[1][2] == pytest.approx(BODY.deck_top, abs=TOL)
     for rail in rails:
         assert rail.bounds()[0][2] == pytest.approx(-BODY.half_height, abs=TOL)
         assert rail.bounds()[1][2] == pytest.approx(+BODY.half_height, abs=TOL)

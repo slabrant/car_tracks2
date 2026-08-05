@@ -13,12 +13,13 @@ import pytest
 
 from parts import curve, straight
 from trackcore import DEFAULT, profile_area, sweep
+from trackcore.edge_unit import PROFILE_VERTS
 from trackcore.mesh import (MeshData, newell_normal, triangulate,
                             triangulated_faces)
 
 
 def _cap_faces(mesh: MeshData) -> list[list[int]]:
-    return [f for f in mesh.faces if len(f) == 12]
+    return [f for f in mesh.faces if len(f) == PROFILE_VERTS]
 
 
 def test_the_profile_cap_is_non_convex():
@@ -66,7 +67,12 @@ def test_no_triangle_is_degenerate_or_wound_backwards():
 
 
 def test_a_fan_would_have_failed_this():
-    """Pin the actual defect, so nobody reintroduces the cheap version."""
+    """Pin the actual defect, so nobody reintroduces the cheap version.
+
+    On the U the fan covers 2.8x the true area, sweeping straight across the
+    open channel. The old I-section additionally produced two exactly collinear
+    triangles; this section does not, so the assertion is about coverage alone.
+    """
     mesh = sweep(straight(50.0))
     face = _cap_faces(mesh)[0]
     fan = [(face[0], face[k], face[k + 1]) for k in range(1, len(face) - 1)]
@@ -75,9 +81,8 @@ def test_a_fan_would_have_failed_this():
     for tri in fan:
         a, b, c = mesh.verts[list(tri)]
         areas.append(0.5 * float(np.linalg.norm(np.cross(b - a, c - a))))
-    assert min(areas) < 1e-9, "expected the fan to emit collinear triangles"
     assert sum(areas) > profile_area(DEFAULT.body) * 1.5, (
-        "expected the fan to cover area outside the profile"
+        "expected the fan to cover area well outside the profile"
     )
 
 

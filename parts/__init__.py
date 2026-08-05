@@ -206,6 +206,20 @@ NOT_PARTS = {"s_bend"}
 """In PATHS because tests need them; not in the printable set."""
 
 GRAFTED = set(GRAFTS)
+"""Parts with a stub.
+
+There used to be a companion set for "declares an up direction", because on the
+old flippable I-section most pieces could be turned over and grafts and banked
+curves could not. On a U-channel **every** piece has a right way up — turned
+over, the channel faces the floor — so the distinction sorts nothing and is
+gone.
+"""
+
+
+NOT_PARTS = {"s_bend"}
+"""In PATHS because tests need them; not in the printable set."""
+
+GRAFTED = set(GRAFTS)
 """Parts with a stub."""
 
 
@@ -229,8 +243,7 @@ def declares_up(name: str) -> bool:
 CATALOGUE: list[str] = ([n for n in sorted(PATHS) if n not in NOT_PARTS]
                         + sorted(HUBS) + sorted(GRAFTS))
 
-DECLARES_UP: set[str] = {n for n in CATALOGUE if declares_up(n)}
-"""The parts with a right way up, and so with no flip axis. See declares_up."""
+
 
 
 def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:

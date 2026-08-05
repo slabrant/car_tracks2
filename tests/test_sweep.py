@@ -11,6 +11,7 @@ from parts import PATHS, curve, ramp, s_bend, straight
 from trackcore import (DEFAULT, Arc, Line, MeshData, Path, PathTooTightError,
                        TrackConfig, check, expected_volume, profile_area, sweep)
 from trackcore.config import Body, Tolerances
+from trackcore.edge_unit import PROFILE_VERTS
 from trackcore.validate import MeshInvalid, signed_volume
 
 BODY = DEFAULT.body
@@ -27,7 +28,7 @@ def test_a_straight_has_the_expected_bounding_box():
 
 def test_a_straight_uses_two_stations_and_no_more():
     mesh = sweep(straight(84.0))
-    assert len(mesh.verts) == 2 * 12
+    assert len(mesh.verts) == 2 * PROFILE_VERTS
 
 
 # -- 9.10 --------------------------------------------------------------------
@@ -95,15 +96,15 @@ def test_an_s_bend_is_a_valid_solid():
 
 
 def test_the_mesh_is_manifold_by_construction_not_by_luck():
-    """N stations x 12 profile vertices, quad strips, two caps. §4.3."""
+    """N stations x the profile, quad strips, two caps. §4.3."""
     path = curve(radius=100.0, angle_deg=90.0)
     mesh = sweep(path)
-    n_stations = len(mesh.verts) // 12
+    n_stations = len(mesh.verts) // PROFILE_VERTS
 
-    assert len(mesh.verts) == n_stations * 12
-    assert len(mesh.faces) == (n_stations - 1) * 12 + 2
-    assert sum(1 for f in mesh.faces if len(f) == 4) == (n_stations - 1) * 12
-    assert sum(1 for f in mesh.faces if len(f) == 12) == 2
+    assert len(mesh.verts) == n_stations * PROFILE_VERTS
+    assert len(mesh.faces) == (n_stations - 1) * PROFILE_VERTS + 2
+    assert sum(1 for f in mesh.faces if len(f) == 4) == (n_stations - 1) * PROFILE_VERTS
+    assert sum(1 for f in mesh.faces if len(f) == PROFILE_VERTS) == 2
 
 
 def test_end_caps_face_along_the_path_at_each_end():

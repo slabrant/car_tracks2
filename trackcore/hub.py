@@ -248,7 +248,7 @@ class Hub:
 
         body = config.body
         out = [prism(_as_pairs(self.deck_region(config)),
-                     -body.half_deck, body.half_deck)]
+                     body.deck_bottom, body.deck_top)]
         for region in self.rail_regions(config):
             out.append(prism(_as_pairs(region),
                              -body.half_height, body.half_height))

@@ -7,8 +7,8 @@ import math
 import numpy as np
 import pytest
 
-from parts import (CATALOGUE, DECLARES_UP, GRAFTED, GRAFTS, GRID, HUBS, PATHS,
-                   build, declares_up, pier, port_frames, support)
+from parts import (CATALOGUE, GRAFTED, GRAFTS, GRID, HUBS, PATHS, build,
+                   pier, port_frames, support)
 from trackcore import DEFAULT, MATE, Graft, GraftInvalid, check, leg_length
 from trackcore.connector import additions, cuts
 
@@ -69,7 +69,7 @@ def test_the_stub_frame_is_right_handed_like_every_other_port():
 def test_the_stub_never_rises_into_the_driving_channel():
     """A stub poking above the deck would stop a car dead."""
     _body, stub = support().solids(DEFAULT)
-    assert stub.bounds()[1][2] <= BODY.half_deck + TOL
+    assert stub.bounds()[1][2] <= BODY.deck_top + TOL
 
 
 def test_the_stub_flanges_land_on_the_body_rails():
@@ -86,13 +86,17 @@ def test_the_stub_flanges_land_on_the_body_rails():
 # -- 9.31, and the arithmetic that makes a bridge stand ----------------------
 
 
-def test_a_support_turned_over_rests_on_a_single_plane():
-    """It is its own foot. No separate part, and no flag saying so."""
+def test_a_support_turned_over_still_makes_a_foot():
+    """A support inverted rests on its rail tops with the stub pointing up.
+
+    On the I-section it rested on rails that were there anyway. On a U it rests
+    on the rail *tops*, which is a narrower base — worth knowing when Phase 6
+    decides how a foot actually sits.
+    """
     piece = build("support", DEFAULT, connectors=False)
     flipped = [m.transformed(_flip()) for m in piece.solids]
-    lows = [m.bounds()[0][2] for m in flipped]
-    assert min(lows) == pytest.approx(-BODY.half_height, abs=TOL)
-    # and the stub now points up
+    assert min(m.bounds()[0][2] for m in flipped) == pytest.approx(
+        -BODY.half_height, abs=TOL)
     assert max(m.bounds()[1][2] for m in flipped) == pytest.approx(
         support().depth, abs=TOL)
 
@@ -125,64 +129,15 @@ def test_the_leg_is_an_ordinary_catalogue_straight():
 # -- 9.32 --------------------------------------------------------------------
 
 
-def _flip_through(centre: np.ndarray, angle: float) -> np.ndarray:
-    """180° rotation about the horizontal axis at ``angle`` through ``centre``."""
-    n = np.array([math.cos(angle), math.sin(angle), 0.0])
-    rotation = 2.0 * np.outer(n, n) - np.eye(3)
-    matrix = np.eye(4)
-    matrix[:3, :3] = rotation
-    matrix[:3, 3] = centre - rotation @ centre
-    return matrix
-
-
-def _has_a_flip_axis(piece) -> bool:
-    """Is there any horizontal axis this piece can be turned over about?
-
-    Searched rather than assumed, because the axis is not the long axis in
-    general: a straight turns about its centreline, a ramp about the cross axis
-    through its midpoint, and a **curve about the bisector through its arc
-    centre**. Assuming the long axis marks every curve as unflippable, which is
-    wrong and was the first version of this test.
-    """
-    verts = np.vstack([m.verts for m in piece.solids])
-    # the axis must pass through the vertex centroid: a symmetry maps the point
-    # set to itself, so it fixes the centroid, and a 180° rotation fixes only
-    # its own axis. The bounding-box centre is *not* good enough — a 45° arc's
-    # box is not centred on its symmetry axis.
-    centre = verts.mean(axis=0)
-    for degrees in np.arange(0.0, 180.0, 2.5):
-        flip = _flip_through(centre, math.radians(float(degrees)))
-        moved = (verts - centre) @ flip[:3, :3].T + centre
-        # matched by distance, not by rounded equality: the residual here is
-        # 1e-14 and a rounded comparison lets a single vertex straddle a
-        # boundary and fail an exact symmetry
-        gap = np.linalg.norm(moved[:, None, :] - verts[None, :, :],
-                             axis=-1).min(axis=1).max()
-        if gap < 1e-6:
-            return True
-    return False
-
-
-def test_the_parts_with_no_flip_axis_are_exactly_those_that_declare_an_up():
-    """Derived from the construction, not declared. A part that acquired a
-    hand-written 'not flippable' flag would be a place for a special case to
-    hide.
-
-    Note what this does *not* claim: that a piece turns about its long axis. It
-    claims only that some horizontal axis exists, which is what "you can turn it
-    over" actually means.
-    """
-    unflippable = {name for name in CATALOGUE
-                   if not _has_a_flip_axis(build(name, DEFAULT, connectors=False))}
-    assert unflippable == DECLARES_UP
-
-
-def test_two_kinds_of_part_declare_an_up_direction_and_both_earn_it():
-    """A graft's stub would point at the ceiling; a banked curve turned over
-    leans the wrong way through the turn. Gravity decided both."""
-    assert DECLARES_UP == GRAFTED | {"curve_90_banked"}
-    assert declares_up("support") and declares_up("curve_90_banked")
-    assert not declares_up("curve_90") and not declares_up("x_rounded")
+def test_no_piece_can_be_turned_over_any_more():
+    """A U-channel has a right way up by construction: inverted, the channel
+    faces the floor. On the old I-section most pieces were congruent to
+    themselves flipped and grafts were the exception; now the whole distinction
+    is gone, which is why `declares_up` went with it."""
+    for name in ("straight_full", "curve_90", "x_junction", "support"):
+        piece = build(name, DEFAULT, connectors=False)
+        flipped = [m.transformed(_flip()) for m in piece.solids]
+        assert _pool(piece.solids) != _pool(flipped)
 
 
 def test_no_part_carries_a_not_flippable_flag():
