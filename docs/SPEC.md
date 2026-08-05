@@ -15,29 +15,29 @@ then the code.
 
 ## 0. What this system is
 
-A track piece is built from one primitive: the **edge unit**, a sideways-T
-cross-section (`⊢`) consisting of one rail plus its share of the deck.
+A track piece is built from one primitive: the **edge unit**, one rail plus its
+share of the deck.
 
 ```
    ##
-   ##═════   rail (##) + deck stem (═), stem points inward
    ##
+   ##═════   rail (##) standing on the deck (═), stem points inward
 ```
 
 Every piece is **one edge unit per boundary chain**, with the deck filling the
 interior. A piece with two ports has two chains, and the two edge units come out
-as mirror images of each other — that pairing is what makes the familiar I-beam
-cross-section. A junction with N ports has N chains and N edge units, related by
+as mirror images of each other — that pairing is what makes the U-channel
+section. A junction with N ports has N chains and N edge units, related by
 **rotation** rather than mirroring.
 
 ```
   N = 2  (straight, curve, ramp)        N = 4  (X junction)
 
     ##              ##                    ═══╗   ╔═══
-    ##══════════════##                       ║ D ║
-    ##              ##                     C ╚═╦═╝ B
+    ##              ##                       ║ D ║
+    ##══════════════##                     C ╚═╦═╝ B
     ^ chain A       ^ chain B                ╔═╝ ╚═╗
-    mirror pair  ->  "I" profile           ══╝  A  ╚══
+    mirror pair  ->  the channel           ══╝  A  ╚══
                                           4 chains, C4
 ```
 
@@ -52,8 +52,8 @@ In scope:
 - Junctions: Y, T, X, and in general N straight arms at arbitrary angles, with
   square or filleted corners.
 - Rotation-minimising frames so swept pieces do not twist.
-- A genderless, flip-symmetric end connector, identical at every port of every
-  piece.
+- A genderless end connector, identical at every port of every piece, that
+  cannot be lifted apart.
 - Bridge supports: a port grafted onto a short straight, with legs made of
   ordinary track pieces stood on end. Turned over, a support is its own foot.
 - Watertight, manifold mesh output.
@@ -104,7 +104,8 @@ Binding. Do not silently redefine.
   config boundary.
 - **Local frame:** cross-sections are drawn in the **XZ plane**.
   - `+X` across the track (width), `x = 0` on the centreline
-  - `+Z` up, `z = 0` on the deck mid-plane
+  - `+Z` up, `z = 0` at the section's **mid-height** (not the deck: on a
+    U-channel the deck lies wholly below it, §2)
   - `+Y` forward along the path
   - `(X, Y, Z)` right-handed
 - **Plan view** means looking down `−Z` at the XY plane. Junction arm angles are
@@ -114,7 +115,7 @@ Binding. Do not silently redefine.
 
 | Term | Meaning |
 |---|---|
-| **edge unit** | the `⊢` primitive: one rail plus its deck stem |
+| **edge unit** | the primitive: one rail plus its deck stem |
 | **rail** | the tall vertical member at a deck edge |
 | **deck** | the thin horizontal web the cars drive on |
 | **profile** | the closed 2D cross-section of an N=2 piece (two edge units) |
@@ -169,65 +170,70 @@ against real track and are trusted.
 Derived once, reused everywhere:
 
 ```
-half_width    = width_outer / 2             = 12.0
-rail_inner    = half_width - rail_thickness = 10.8
-half_height   = rail_height_total / 2       =  2.35
-half_deck     = deck_thickness / 2          =  0.7
-channel_width = 2 * rail_inner              = 21.6
+half_width    = width_outer / 2                    = 12.0
+rail_inner    = half_width - rail_thickness        = 10.8
+half_height   = rail_height_total / 2              =  2.35
+deck_bottom   = -half_height                       = -2.35   the bed face
+deck_top      = deck_bottom + deck_thickness       = -0.95   the driving surface
+guide_height  = half_height - deck_top             =  3.30
+channel_width = 2 * rail_inner                     = 21.6
 ```
+
+**The deck lies wholly below `z = 0`.** §6.2 depends on it: the connector splits
+the section at `z = 0`, and a deck straddling that plane would be cut into thin
+tongues, which is what the old I-section forced.
 
 The edge unit occupies, in its own local frame with the rail's outer face at
 `x = 0` and the stem running toward `+x`:
 
 ```
-rail:  x ∈ [0, rail_thickness],   z ∈ [-half_height, +half_height]
-stem:  x ∈ [rail_thickness, ...], z ∈ [-half_deck,   +half_deck  ]
+rail:  x ∈ [0, rail_thickness],   z ∈ [deck_bottom, +half_height]
+stem:  x ∈ [rail_thickness, ...], z ∈ [deck_bottom,   deck_top   ]
 ```
 
 ### 2.1 The N=2 profile
 
 Two edge units facing each other across `channel_width`, giving a closed
-12-vertex polygon in CCW order:
+8-vertex polygon, ordered CCW as seen from `+Y`:
 
 ```
         z
         ^
   +2.35 |  ####                          ####
         |  ####                          ####
-  +0.70 |  ################################## <- deck top
-   0.00 |--####--------------+-------------####----> x
-  -0.70 |  ##################################
         |  ####                          ####
-  -2.35 |  ####                          ####
+  -0.95 |  ################################## <- deck top, the driving surface
+  -2.35 |  ################################## <- bed face
            |  |                          |  |
         -12.0 -10.8                   +10.8 +12.0
 ```
 
 ```
-( -half_width,  +half_height)   0     ( +half_width,  -half_height)   6
-( -rail_inner,  +half_height)   1     ( +rail_inner,  -half_height)   7
-( -rail_inner,  +half_deck  )   2     ( +rail_inner,  -half_deck  )   8
-( +rail_inner,  +half_deck  )   3     ( -rail_inner,  -half_deck  )   9
-( +rail_inner,  +half_height)   4     ( -rail_inner,  -half_height)  10
-( +half_width,  +half_height)   5     ( -half_width,  -half_height)  11
+( -half_width,  +half_height)   0     ( +half_width,  +half_height)   5
+( -rail_inner,  +half_height)   1     ( +half_width,   deck_bottom)   6
+( -rail_inner,   deck_top   )   2     ( -half_width,   deck_bottom)   7
+( +rail_inner,   deck_top   )   3
+( +rail_inner,  +half_height)   4
 ```
 
-**Vertex count is fixed at 12 for every station.** §4.3 depends on it.
+The bed face runs unbroken from `-half_width` to `+half_width`, so the two edge
+units share that edge and there is no vertex on the centreline.
+
+**Vertex count is fixed at 8 for every station.** §4.3 depends on it.
 
 Asserted at construction: all parameters `> 0`; `rail_thickness * 2 <
 width_outer`; `deck_thickness < rail_height_total`; polygon simple and CCW.
 
-### 2.2 The two mirrors — keep them straight
+### 2.2 The one mirror
 
-There are two distinct symmetries and only one of them survives at a junction.
+**Left–right, across the centreline.** It is what pairs two edge units into a
+channel. It exists **only when N = 2**; at a junction it is replaced by N-fold
+rotation.
 
-- **Left–right mirror**, across the centreline. This is what turns `⊢` and `⊣`
-  into an `I`. It exists **only when N = 2**. At a junction it is replaced by
-  N-fold rotation.
-- **Top–bottom mirror**, across `z = 0`, giving rails above *and* below the deck.
-  This **holds for every piece including junctions**, because junctions are
-  prismatic in z (§5). It is what makes a piece flippable, and the connector
-  derivation in §6.1 depends on it.
+There used to be a second — top–bottom, across `z = 0` — and it was
+load-bearing: it made every piece flippable and it *forced* the connector's
+diagonal split (§6.1). The U-channel has no such symmetry. What that cost, and
+what replaced it, is §5.6.
 
 ---
 
@@ -453,7 +459,7 @@ defect.
 Build as prisms and union:
 
 ```
-deck prism  : the outline,      z ∈ [−half_deck,   +half_deck  ]
+deck prism  : the outline,      z ∈ [deck_bottom,  deck_top    ]
 rail prisms : each rail region, z ∈ [−half_height, +half_height]   (full height)
 ```
 
@@ -516,8 +522,8 @@ while they would have been a separate design problem under a gendered scheme.
 then land exactly on the horizontal piece's own lower rails — both occupy
 `|x| ∈ [rail_inner, half_width]` — and the web rises into the open channel to
 meet the deck underside. The section simply continues downward, and the stub is
-an I-beam column, which is the right shape for the job by accident of the track
-already being one.
+a channel-section column, which is a good shape for the job by accident of the
+track already being one.
 
 ```
 SECTION ACROSS THE TRACK, at a support
@@ -1074,7 +1080,7 @@ Two things worth recording:
   → straight sequence, because that is where a Frenet frame flips its normal.
   Test 9.4 holds `up · ẑ > 0.999` across it. A Frenet implementation fails
   there, which is the point.
-- Ear clipping was needed earlier than §8 implies. The end caps are the I-beam
+- Ear clipping was needed earlier than §8 implies. The end caps are the track
   profile, which is **non-convex**, so a fan triangulation from one corner
   emits triangles crossing the open channel between the rails plus two exactly
   collinear ones. The signed sums used for area and volume survive that
@@ -1126,8 +1132,9 @@ claims with one policy.
 `trackcore/graft.py` builds a short straight with a stub square to it. The stub
 is the track profile swept downward with its `across` on world X and its `up` on
 world Y, which lands its rail flanges exactly on the body's own lower rails —
-the section simply continues downward and comes out an I-beam column. It stops
-at the deck surface so it never rises into the channel and stops a car.
+the section simply continues downward and comes out a channel-section column.
+It stops at the driving surface so it never rises into the channel and stops a
+car.
 
 No foot part: a support turned over is one, resting on its own rails with its
 through-ports still at ordinary track height, so a leg can rise straight out of
@@ -1295,6 +1302,37 @@ Still open:
    change rather than a construction change — `edge_unit.py` owns the section,
    so a texture would live there and every part would inherit it. Worth
    deciding only after a printed set has been played with.
-3. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
+3. **The tab is unioned on, and should be swept.** Open, and it is what holds
+   `lap_length` at 8.0.
+
+   A tab is a straight box added to the body at each port. At the port plane its
+   side faces are *exactly* coplanar with the body's rail faces, and on a curve
+   they are tangent there and diverge going in — a tangential union, which is
+   the one thing an exact solver cannot resolve cleanly. Whether it survives is
+   luck: a 45° arc validates at an 8 mm lap and comes out non-manifold at 7 mm
+   or below, while a 90° arc of the same radius is fine at both. Detent height
+   and offset make no difference; only the lap does.
+
+   Two attempted fixes did not work, and are recorded so they are not retried:
+   giving the tab a 1 mm root overlap so the union has real volume
+   (`TAB_ROOT_OVERLAP` — kept anyway, it is sound), and widening the cut tools
+   to clear the body's lateral drift (`outer_margin` — likewise kept). Both
+   address real fragilities. Neither is this one.
+
+   **The fix is not to tune it but to remove the union.** Sweep the body
+   `lap_length` *past* each nominal port along the end tangent, so the tab is
+   part of the swept solid and the notch cuts alone define the port. Then there
+   is no second solid, no tangency, and nothing to resolve. It also makes §6.6
+   honest again: the connector would be cuts-plus-detents rather than
+   cuts-then-additions.
+
+   The cost is that a hub and a graft are not swept, so they would still need
+   added tabs — two mechanisms instead of one. Worth measuring before choosing.
+
+   Until then `lap_length` is 8.0 because that is the value the whole catalogue
+   is known to build at, and the Phase 0 comb measures the shorter ones on
+   straights, which have no curvature and are unaffected.
+
+4. ~~Bridge piers.~~ **Decided.** In scope as Construction C (§5.5). The flip
    symmetry objection was simply wrong: flip symmetry is a property of ports,
    not of piece bodies (§5.6), and a support turned over is its own foot.

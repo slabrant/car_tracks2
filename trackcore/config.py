@@ -82,7 +82,27 @@ class Body:
 
 @dataclass(frozen=True)
 class Connector:
-    """§6.4. Calibrated in Phase 0 against printed parts; do not re-guess."""
+    """§6.4.
+
+    `fit_clearance` was calibrated against printed parts on the old I-section
+    and is carried over: the mating faces it governs — the lap plane, the
+    centreline, the tab tips — are mechanically unchanged by the section swap.
+
+    `lap_length` stays at 8.0 for now, and **not** because 8.0 is right.
+
+    Shortening it is attractive: strain at the tab root is `3·δ·h / 2a²`, so a
+    shorter lap demands a shallower detent, but retention goes *up* rather than
+    down, because stiffness grows as `1/a³` while the allowed deflection only
+    falls as `a²` — force scales as `1/a`. At 6.0 with a 0.35 mm detent the root
+    strain is the same 0.8 % it is at 8.0 with 0.50 mm, and pull-out is about a
+    third higher, for a joint 4 mm shorter.
+
+    It is held at 8.0 because below about 7.4 a 45° arc comes out non-manifold.
+    That is a solver failure, not a geometry conflict — see §11.3 — and the fix
+    is to sweep the tab rather than union it on. Until that is done, 8.0 is the
+    value the whole catalogue is known to build at, and the Phase 0 comb tests
+    the shorter ones on straights, which are unaffected.
+    """
 
     lap_length: float = 8.0
     fit_clearance: float = 0.15

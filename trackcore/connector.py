@@ -29,6 +29,19 @@ from .mesh import MeshData, Pt2, box, prism_yz
 EPS = 0.01
 """Overlap used to keep boolean inputs from meeting face-to-face."""
 
+TAB_ROOT_OVERLAP = 1.0
+"""How far a tab reaches back **into** the body before the port plane, mm.
+
+A tab's underside is coplanar with the face the notch cut has just created, so
+the two interlock only through the volume where they overlap. At EPS that volume
+is 0.01 mm deep — technically an overlap, practically at the solver's tolerance.
+It survived on straights and 90° arcs and failed on a 45° arc the moment the lap
+was shortened, which is the signature of a tolerance-edge degeneracy rather than
+a real geometric conflict.
+
+Reaching a whole millimetre back costs nothing: that region is body material the
+notch never removes, so the tab only duplicates what is already there."""
+
 DETENT_SINK = 0.25
 """How far a detent's base is buried behind the lap face it sits on.
 
@@ -84,6 +97,7 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     zf = clear / 2.0          # lap plane offset
     xs = clear / 2.0          # centreline slot half-width
     d, dh = connector.detent_offset, connector.detent_height
+    root = min(TAB_ROOT_OVERLAP, connector.lap_length / 2.0)
 
     return [
         # The (+x, +z) and (-x, -z) quadrants, running past the port plane. On
@@ -92,9 +106,9 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
         # tongues. The price is an asymmetric pair: the upper tab is rail only,
         # the lower tab is rail plus half the deck. Both ports carry one of
         # each, so the two mating pieces are still balanced.
-        ("tab_rail_px", box((ri, -EPS, zf), (hw, lap, hh))),
-        ("tab_rail_nx", box((-hw, -EPS, -hh), (-ri, lap, -zf))),
-        ("tab_deck_nx", box((-ri - EPS, -EPS, body.deck_bottom),
+        ("tab_rail_px", box((ri, -root, zf), (hw, lap, hh))),
+        ("tab_rail_nx", box((-hw, -root, -hh), (-ri, lap, -zf))),
+        ("tab_deck_nx", box((-ri - EPS, -root, body.deck_bottom),
                             (-xs, lap, body.deck_top))),
         # detent ribs, inset from the rail inner face so they do not rub along
         # the mating piece's deck edge
@@ -105,6 +119,28 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
             _detent_polygon(config, +d, -zf, +1, dh, 0.0, mirror=False),
             -hw, -ri - clear)),
     ]
+
+
+def outer_margin(config: TrackConfig = DEFAULT) -> float:
+    """How far a cut tool must reach past the rail's outer face, mm.
+
+    The tools are straight boxes in the port frame; the body is not. Over a lap
+    zone of reach `d` on a path of radius `R`, the section drifts sideways by
+    about `d^2 / 2R`, so on one port of every curve the body leans *out* past a
+    tool that only overshoots by EPS. What is left behind is not a chunk — it is
+    a wedge tapering to nothing at the port plane, which is a tangential
+    degeneracy and exactly what a solver cannot resolve.
+
+    Sizing it for the tightest legal radius makes it curvature-proof. Reaching
+    further out is free: past the rail's outer face there is nothing to cut.
+
+    Found by a 45° arc that validated at an 8 mm lap and went non-manifold at
+    6 mm — shorter reach, *less* drift, thinner wedge. The failure got worse as
+    the geometry got tamer, which is the tell for a tolerance-edge artifact
+    rather than a real conflict.
+    """
+    reach = config.connector.lap_length + config.connector.fit_clearance
+    return EPS + reach * reach / (2.0 * config.min_radius)
 
 
 def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
@@ -119,6 +155,7 @@ def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     d = connector.detent_offset
     depth = connector.detent_height + clear / 2.0
     grow = clear / 2.0
+    out = outer_margin(config)
 
     return [
         # The two notch quadrants, each reaching one slot half-width *past* the
@@ -128,15 +165,15 @@ def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
         # wholly contained in the union of these two it contributed nothing but
         # coplanar faces; on the Y, whose port planes sit at irrational angles,
         # the solver turned those into six degenerate triangles.
-        ("notch_px", box((-xs, back, -hh - EPS), (hw + EPS, EPS, zf))),
-        ("notch_nx", box((-hw - EPS, back, -zf), (xs, EPS, hh + EPS))),
+        ("notch_px", box((-xs, back, -hh - EPS), (hw + out, EPS, zf))),
+        ("notch_nx", box((-hw - out, back, -zf), (xs, EPS, hh + EPS))),
         # detent grooves, the mirror of a rib grown by clearance
         ("groove_px", prism_yz(
             _detent_polygon(config, -d, zf, +1, depth, grow, mirror=True),
-            ri + clear - grow, hw + EPS)),
+            ri + clear - grow, hw + out)),
         ("groove_nx", prism_yz(
             _detent_polygon(config, -d, -zf, -1, depth, grow, mirror=True),
-            -hw - EPS, -ri - clear + grow)),
+            -hw - out, -ri - clear + grow)),
     ]
 
 

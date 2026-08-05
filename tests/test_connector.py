@@ -157,12 +157,16 @@ def test_the_centreline_halves_clear_each_other_by_exactly_one_clearance():
 
 
 def test_every_tab_lands_inside_the_mating_notch():
+    """Only the part that crosses the port plane. A tab also reaches back into
+    its own body (`TAB_ROOT_OVERLAP`) so the union has volume to work with, and
+    that root is nobody else's business."""
     notches = [(label, *mesh.transformed(MATE).bounds())
                for label, mesh in cuts(DEFAULT) if label.startswith("notch")]
     for label, mesh in additions(DEFAULT):
         if not label.startswith("tab"):
             continue
         lo, hi = mesh.bounds()
+        lo = (lo[0], max(lo[1], 0.0), lo[2])          # clip off the root
         assert any(all(n_lo[i] <= lo[i] + TOL and hi[i] <= n_hi[i] + TOL
                        for i in range(3))
                    for _n, n_lo, n_hi in notches), f"{label} is not contained"
