@@ -15,7 +15,8 @@ from functools import partial
 from typing import Callable
 
 from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Path, Piece, Ramp,
-                       TrackConfig, applied, port_matrices, sweep)
+                       TrackConfig, applied, port_matrices, sweep,
+                       swept_with_ports)
 from trackcore.connector import port_extension
 from trackcore.connector import validate as validate_connector
 from trackcore.mesh import translation
@@ -218,13 +219,6 @@ gone.
 """
 
 
-NOT_PARTS = {"s_bend"}
-"""In PATHS because tests need them; not in the printable set."""
-
-GRAFTED = set(GRAFTS)
-"""Parts with a stub."""
-
-
 def declares_up(name: str) -> bool:
     """Does this part's geometry have a right way up? §5.6.
 
@@ -272,15 +266,8 @@ def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
     if name in PATHS:
         path = PATHS[name](**kwargs)
         matrices = port_matrices(path, config)
-        if extend:
-            # sweep past both ports along the end tangents; the notch cuts trim
-            # the extension down to the tab quadrants (§6.6). Translating back
-            # by `extend` puts the nominal start at the origin again.
-            long_path = Path.chain(Line(extend), *path.primitives, Line(extend))
-            solids: tuple = (sweep(long_path, config).transformed(
-                translation(0.0, -extend, 0.0)),)
-        else:
-            solids = (sweep(path, config),)
+        solids: tuple = ((swept_with_ports(path, config),) if extend
+                         else (sweep(path, config),))
         reach = 2.0 * (config.connector.lap_length + config.connector.fit_clearance)
         if connectors and path.length <= reach:
             raise ValueError(

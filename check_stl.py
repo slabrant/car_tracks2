@@ -18,6 +18,11 @@ from trackcore.validate import MeshInvalid
 
 
 def main(argv: list[str]) -> int:
+    # A part is one solid and §7 rule 7 says so. A build plate is deliberately
+    # many, so it has to say which it is being handed.
+    plate = "--plate" in argv
+    argv = [a for a in argv if a != "--plate"]
+
     paths: list[str] = []
     for pattern in argv or ["out/set/*.stl"]:
         paths.extend(sorted(glob.glob(pattern)))
@@ -30,7 +35,8 @@ def main(argv: list[str]) -> int:
         mesh = read_stl(path)
         size = mesh.size()
         try:
-            stats = check(mesh, name=os.path.basename(path))
+            stats = check(mesh, name=os.path.basename(path),
+                          components=None if plate else 1)
             verdict = (f"OK   solids={int(stats['components'])} "
                        f"tris={int(stats['faces']):5d} "
                        f"vol={stats['volume_mm3']:9.2f} mm3")

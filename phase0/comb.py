@@ -38,7 +38,7 @@ from blender.build import from_object, reset_scene, to_object  # noqa: E402
 from blender.cleanup import clean  # noqa: E402
 from blender.export import export  # noqa: E402
 from trackcore import (DEFAULT, Connector, Line, Path, Piece, TrackConfig,
-                       applied, check, port_matrices, sweep)
+                       applied, check, port_matrices, swept_with_ports)
 from trackcore.mesh import box, translation  # noqa: E402
 
 CLEARANCES = [0.10, 0.15, 0.20]
@@ -91,7 +91,10 @@ def coupon(clearance: float, lap: float, clearance_index: int,
     path = Path.chain(Line(COUPON_LENGTH))
     cuts, adds = applied(port_matrices(path, config), config)
     name = f"c{clearance:.2f}_l{lap:.0f}"
-    piece = Piece(name=name, solids=(sweep(path, config),),
+    # `swept_with_ports`, not `sweep`: the tab is swept past the port plane and
+    # trimmed back by the notch cuts. Sweeping the bare path here is what left
+    # every detent rib on this plate floating in mid-air.
+    piece = Piece(name=name, solids=(swept_with_ports(path, config),),
                   cuts=tuple(cuts) + tuple(tally(config, clearance_index,
                                                  lap_index)),
                   additions=tuple(adds))
@@ -145,7 +148,8 @@ def main() -> int:
             detent = config.connector
             print(f"{piece.name:14s} {clearance:6.2f} {lap:5.1f} "
                   f"{detent.detent_height:7.3f} {detent.detent_offset:7.2f} "
-                  f"{ci}+{li:<5d}  OK  vol={stats['volume_mm3']:7.1f} mm3")
+                  f"{ci}+{li:<5d}  {stats['components']:.0f} solid  "
+                  f"vol={stats['volume_mm3']:7.1f} mm3")
 
     rows = (len(plate) + columns - 1) // columns
     span_x, span_y = (min(len(plate), columns) - 1) * pitch_x, (rows - 1) * pitch_y

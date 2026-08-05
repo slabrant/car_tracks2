@@ -56,6 +56,24 @@ class Body:
         return -self.half_height + self.deck_thickness
 
     @property
+    def deck_mid(self) -> float:
+        """Mid-thickness of the deck, where the joint splits it.
+
+        The connector's split is **stepped**, not flat (§6.2): mid-height
+        through the rails, mid-deck through the deck. A flat split at `z = 0`
+        misses the deck entirely on a U-channel, because the deck is wholly
+        below mid-height — which leaves the two thin rail laps as the only
+        thing resisting a vertical load, and that is a joint no bridge
+        survives.
+        """
+        return (self.deck_bottom + self.deck_top) / 2.0
+
+    @property
+    def deck_lamina(self) -> float:
+        """Half the deck: what one tab carries across the road."""
+        return self.deck_thickness / 2.0
+
+    @property
     def guide_height(self) -> float:
         """How far the rails stand above the driving surface."""
         return self.half_height - self.deck_top
@@ -75,8 +93,8 @@ class Body:
             raise ValueError("deck must be thinner than the rail height")
         if self.deck_top >= 0.0:
             raise ValueError(
-                "the deck must sit wholly below the section mid-height, or the "
-                "connector's diagonal split would cut through it (§6.2)"
+                "the deck must sit wholly below the section mid-height, so that "
+                "the rail columns of the joint split clear of it (§6.2)"
             )
 
 

@@ -45,24 +45,33 @@ junction and sweep terms too, is `docs/SPEC.md` §1.1.
       tab ├──────►                                        ◄──────┤ tab
 ```
 
-**At a port** — the joint. The section is cut at the centreline and at
-mid-height, and each piece keeps two diagonally opposite quadrants:
+**At a port** — the joint. The section reads as four columns — rail, deck,
+deck, rail — each split by a horizontal plane, each keeping the opposite side
+from its neighbour. Four tabs: two reach over the mate, two reach under it.
 
 ```
         PORT FACE                          SIDE VIEW of one rail
 
-     ┌────────┬────────┐              ────────────────┐
-     │ notch  │  TAB   │   upper      piece A, upper  │  ◄── tab
-     ├────────┼────────┤   ─────      ────────────────┼──────── lap plane
-     │  TAB   │ notch  │   lower                      │ piece B, lower
-     └────────┴────────┘              ────────────────┘
-       -x        +x                   |◄─ notch ─►|◄─ tab ─►|
+  ┌──────┬──────┬──────┬──────┐        ────────────────┐
+  │notch │ TAB  │notch │ TAB  │        piece A, upper  │  ◄── tab
+  ├──────┼──────┼──────┼──────┤ split  ────────────────┼──────── lap plane
+  │ TAB  │notch │ TAB  │notch │                        │ piece B, lower
+  └──────┴──────┴──────┴──────┘        ────────────────┘
+   -x     -x     +x     +x             |◄─ notch ─►|◄─ tab ─►|
+   rail   deck   deck   rail
 ```
+
+The split is at mid-height through the rails and **mid-deck** through the deck.
+That step is what makes the joint hold: it puts half the deck's thickness over
+the mate's other half, right across the road, so a vertical load is carried by
+the whole section instead of by two thin rail laps.
 
 - **tab** — runs past the port plane, into the mate
 - **notch** — cut back, to receive the mate's tab
 - **lap** — where they overlap; **lap plane** is where they slide on each other
-- **centreline slot** — the gap where the two halves pass
+- **centreline slot** — the gap where the two halves pass; two more like it
+  sit inboard of the rails, all three running along the direction of travel so
+  a wheel never crosses one
 - **detent rib / groove** — the click
 - **port** — one end of a piece; **port plane** — where two pieces meet
 
@@ -122,6 +131,7 @@ blender --background --python phase0/comb.py -- --outdir out/comb
 
 # check what is on disk really is a valid solid
 ./.venv/bin/python check_stl.py 'out/set/*.stl'
+./.venv/bin/python check_stl.py --plate 'out/comb/*.stl'   # a plate is many solids
 ```
 
 Two more, when you want to look at something:

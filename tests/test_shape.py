@@ -19,6 +19,7 @@ import pytest
 
 from parts import CATALOGUE, HUBS, PATHS, port_frames
 from trackcore import DEFAULT, Arc, Line, Path, Ramp, profile_area, sweep
+from trackcore.connector import tab_area
 from trackcore.mesh import cross_section_area
 
 BODY = DEFAULT.body
@@ -33,19 +34,6 @@ same curve too, and the areas add. The section is under 12.5 mm from its own
 centreline, and the nearest other material on such a plane is over 24 mm away
 even on the tightest legal arc, so this sits safely between the two.
 """
-
-
-def tab_area(config=DEFAULT) -> float:
-    """What one port's two quadrants come to, after every clearance.
-
-    Half the section, less the slivers the clearances take: the lap plane eats
-    `clearance/2` off each rail, and the centreline slot eats the same off the
-    deck half.
-    """
-    body, half = config.body, config.connector.fit_clearance / 2.0
-    rails = 2.0 * body.rail_thickness * (body.half_height - half)
-    deck = body.deck_thickness * (body.rail_inner - half)
-    return rails + deck
 
 
 # -- the swept body, before any joint ---------------------------------------
@@ -193,13 +181,15 @@ def test_a_hole_through_the_deck_would_be_caught():
 
 def test_a_port_keeps_a_little_under_half_the_section():
     """Half, less what the clearances take. Both mating pieces carry the same,
-    which is what makes the joint balanced."""
+    which is what makes the joint balanced.
+
+    The four-column split has more mating faces than the two-quadrant one it
+    replaced, so it gives up more to clearance — but not much more, and it buys
+    an order of magnitude in vertical bearing. Anything approaching half means
+    a face has gone missing.
+    """
     assert tab_area() < FULL / 2.0
-    assert tab_area() > 0.45 * FULL
-    slivers = FULL / 2.0 - tab_area()
-    assert slivers == pytest.approx(
-        CONN.fit_clearance / 2.0 * (2.0 * BODY.rail_thickness
-                                    + BODY.deck_thickness), abs=1e-9)
+    assert tab_area() > 0.44 * FULL
 
 
 @pytest.mark.parametrize("name", CATALOGUE)
@@ -237,4 +227,26 @@ def test_components_are_counted_over_faces_not_stored_vertices():
 
     pair = merge([box((0.0, 0.0, 0.0), (1.0, 1.0, 1.0)),
                   box((5.0, 0.0, 0.0), (6.0, 1.0, 1.0))])
-    assert check(pair, name="pair")["components"] == 2.0
+    assert check(pair, name="pair", components=2)["components"] == 2.0
+
+
+def test_a_part_in_pieces_is_refused_and_the_stray_piece_is_located():
+    """Rule 7, and the bug that bought it.
+
+    Two closed boxes a centimetre apart are two flawless solids: manifold,
+    watertight, wound right, genus 0 each. Every rule §7 had passed them, and
+    that is how the comb shipped with seventy-two ribs floating in the air.
+    """
+    from trackcore import check
+    from trackcore.mesh import box, merge
+    from trackcore.validate import MeshInvalid
+
+    body = box((0.0, 0.0, 0.0), (10.0, 10.0, 10.0))
+    rib = box((11.0, 4.0, 4.0), (12.1, 5.1, 4.5))     # adrift, rib-sized
+    with pytest.raises(MeshInvalid) as raised:
+        check(merge([body, rib]), name="shattered")
+
+    message = str(raised.value)
+    assert "2 separate solid(s), expected 1" in message
+    assert "1.10 x 1.10 x 0.50 mm" in message, "say how big the stray one is"
+    assert "(11.55, 4.55, 4.25)" in message, "and say where it is"

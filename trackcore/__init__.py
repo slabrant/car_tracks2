@@ -17,7 +17,8 @@ from .frames import build as build_frames
 from .hub import Arm, Hub, HubInvalid
 from .mesh import MeshData, Piece, prism, read_stl, write_stl
 from .path import Arc, Line, Path, PathDiscontinuous, PathTooTightError, Ramp
-from .sweep import expected_volume, port_matrices, sweep
+from .sweep import (expected_volume, port_matrices, sweep,
+                    swept_with_ports)
 from .validate import MeshInvalid, check, signed_volume
 
 __all__ = [
@@ -28,7 +29,7 @@ __all__ = [
     "Hub", "Arm", "HubInvalid",
     "Graft", "GraftInvalid", "leg_length",
     "Path", "Line", "Arc", "Ramp", "PathTooTightError", "PathDiscontinuous",
-    "sweep", "expected_volume", "port_matrices",
+    "sweep", "swept_with_ports", "expected_volume", "port_matrices",
     "applied", "port_matrix", "MATE",
     "check", "signed_volume", "MeshInvalid",
 ]

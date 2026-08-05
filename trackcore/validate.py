@@ -79,9 +79,75 @@ def count_components(vertices, edges) -> int:
     return len({find(i) for i in parent})
 
 
+def _shell_report(mesh: MeshData, vertices, edges, limit: int = 3) -> str:
+    """Locate and size the smallest shells, so rule 7 points at the culprit.
+
+    "5 separate solids" sends you looking. "1.1 x 1.1 x 0.5 mm at (11.5, 2.5,
+    0.1)" is the detent rib, by name, and you are done. The biggest shell is
+    assumed to be the part and is left out.
+    """
+    parent = {index: index for index in vertices}
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in edges:
+        if a in parent and b in parent:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+    shells: defaultdict[int, set[int]] = defaultdict(set)
+    for face in mesh.faces:
+        shells[find(face[0])].update(face)
+
+    # by bounding volume, not by vertex count: two boxes have eight corners
+    # each however different their sizes, and the whole point is to name the
+    # small one.
+    measured = []
+    for group in shells.values():
+        points = mesh.verts[sorted(group)]
+        low, high = points.min(axis=0), points.max(axis=0)
+        measured.append((float(np.prod(np.maximum(high - low, 1e-6))),
+                         low, high))
+
+    # by the size key alone; tuples would fall through to comparing the numpy
+    # corners when two shells happen to share a bounding volume
+    ordered = sorted(measured, key=lambda shell: shell[0])[:-1]  # drop largest
+    described = []
+    for _, low, high in ordered[:limit]:
+        size = high - low
+        mid = (high + low) / 2.0
+        described.append(
+            f"{size[0]:.2f} x {size[1]:.2f} x {size[2]:.2f} mm at "
+            f"({mid[0]:.2f}, {mid[1]:.2f}, {mid[2]:.2f})"
+        )
+    if len(ordered) > limit:
+        described.append(f"and {len(ordered) - limit} more")
+    return "; ".join(described)
+
+
 def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
-          weld_tol: float = 1e-9) -> dict[str, float]:
-    """Run all six §7 checks. Raises MeshInvalid on the first failure.
+          weld_tol: float = 1e-9,
+          components: int | None = 1) -> dict[str, float]:
+    """Run all seven §7 checks. Raises MeshInvalid on the first failure.
+
+    ``components`` is how many separate solids the caller expects, and it
+    defaults to one because a *part* is one part. Pass ``None`` to accept any
+    number — only a deliberately multi-body mesh, such as a full build plate,
+    should do that.
+
+    Rule 7 was added late and at some cost. §7 originally proved a mesh
+    manifold, watertight, correctly wound and genus 0 *per component*, which a
+    part shattered into five pieces satisfies perfectly: five closed spheres
+    are five legal solids. The Phase 0 comb shipped with all seventy-two of its
+    detent ribs floating free in the air beside the tab they belong to, and
+    every rule passed, and the build printed OK. It was caught by eye. Counting
+    the components was already being done, one line above; nothing was looking
+    at the answer.
 
     Returns a small dict of measured quantities for reporting.
     """
@@ -146,11 +212,19 @@ def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
     e = len(undirected)
     f = len(mesh.faces)
     euler = v - e + f
-    components = count_components(referenced, undirected.keys())
-    if euler != 2 * components:
+    found = count_components(referenced, undirected.keys())
+    if euler != 2 * found:
         problems.append(
-            f"Euler characteristic V-E+F = {euler}, expected {2 * components} "
-            f"for {components} genus-0 component(s)"
+            f"Euler characteristic V-E+F = {euler}, expected {2 * found} "
+            f"for {found} genus-0 component(s)"
+        )
+
+    # 7. one part, one solid
+    if components is not None and found != components:
+        loose_shells = _shell_report(mesh, referenced, undirected.keys())
+        problems.append(
+            f"{found} separate solid(s), expected {components}"
+            + (f"; the stray one(s) are {loose_shells}" if loose_shells else "")
         )
 
     # 3. outward normals
@@ -166,6 +240,6 @@ def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
         "edges": float(e),
         "faces": float(f),
         "euler": float(euler),
-        "components": float(components),
+        "components": float(found),
         "volume_mm3": volume,
     }

@@ -14,11 +14,11 @@ from __future__ import annotations
 import numpy as np
 
 from .config import DEFAULT, TrackConfig
-from .connector import port_matrix
+from .connector import port_extension, port_matrix
 from .edge_unit import PROFILE_VERTS, profile
 from .frames import Frames, build
-from .mesh import MeshData
-from .path import Path
+from .mesh import MeshData, translation
+from .path import Line, Path
 
 
 def rings(frames: Frames, section: list[tuple[float, float]]) -> np.ndarray:
@@ -82,6 +82,31 @@ def port_matrices(path: Path, config: TrackConfig = DEFAULT) -> list:
         port_matrix(frames.points[0], -frames.tangent[0], frames.up[0]),
         port_matrix(frames.points[-1], frames.tangent[-1], frames.up[-1]),
     ]
+
+
+def swept_with_ports(path: Path, config: TrackConfig = DEFAULT) -> MeshData:
+    """Sweep a path *and* the tab material past both of its ports, §6.6.
+
+    A tab is not unioned onto the end of a piece, it is swept: the body runs on
+    past the port plane along the end tangent, and the notch cuts trim what
+    runs on down to the two tab quadrants. That is what lets a tab follow a
+    curve instead of shooting off it tangentially, and it is why `curve_45`
+    builds at a 6 mm lap at all.
+
+    Anything that sweeps a path and then applies the connector needs this, and
+    for a while only `parts.build` had it. The Phase 0 comb swept the bare path
+    instead, so its coupons had no material past the port plane for a tab to be
+    trimmed out of — and the detent ribs, which are unioned on at
+    `detent_offset` along the lap, were left standing in mid-air beside nothing
+    at all. Seventy-two of them, on the one plate meant to settle the joint by
+    measurement. Call this, or do not apply a connector.
+    """
+    extend = port_extension(config)
+    if not extend:
+        return sweep(path, config)
+    long_path = Path.chain(Line(extend), *path.primitives, Line(extend))
+    return sweep(long_path, config).transformed(
+        translation(0.0, -extend, 0.0))
 
 
 def expected_volume(path: Path, config: TrackConfig = DEFAULT) -> float:

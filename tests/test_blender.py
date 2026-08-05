@@ -8,6 +8,7 @@ absent, which keeps §9.26 honest: the rest of the suite runs without it.
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -154,14 +155,11 @@ def test_the_catalogue_builds_at_every_joint_configuration():
 # -- the right shape, on the finished solid ---------------------------------
 
 
-def _tab_area(config=DEFAULT) -> float:
-    body, half = config.body, config.connector.fit_clearance / 2.0
-    return (2.0 * body.rail_thickness * (body.half_height - half)
-            + body.deck_thickness * (body.rail_inner - half))
+from trackcore.connector import tab_area as _tab_area
 
 
 @pytest.mark.parametrize("name", CATALOGUE)
-def test_a_finished_port_keeps_exactly_its_two_quadrants(built, name):
+def test_a_finished_port_keeps_exactly_its_four_columns(built, name):
     """Measured on the exported solid, booleans and cleanup included.
 
     §7 cannot tell a hole from a shape — a ramp once shipped with a slot cut
@@ -215,4 +213,41 @@ def test_a_finished_body_is_still_full_track(built, name):
     area = cross_section_area(mesh, point, normal, within=20.0)
     assert area == pytest.approx(profile_area(DEFAULT.body), rel=5e-3), (
         f"{name} measures {area:.3f} mm² clear of its joint"
+    )
+
+
+# -- the calibration plate ---------------------------------------------------
+
+
+def test_the_comb_plate_is_one_solid_per_coupon(tmp_path):
+    """The plate that settles the joint by measurement, measured itself.
+
+    It shipped with all seventy-two of its detent ribs floating in the air: the
+    coupon swept the bare path, so there was no tab past the port plane for a
+    rib to sit on, and a rib is unioned on rather than swept. Nothing caught it
+    because nothing here ran the comb — §9.24 covers the catalogue and the comb
+    is a separate entry point that had quietly grown its own copy of the sweep.
+
+    Two rules now stand between that and a print: `check` refuses a part in
+    pieces, and this runs the comb.
+    """
+    result = subprocess.run(
+        [BLENDER, "--background", "--python", "phase0/comb.py", "--",
+         "--outdir", str(tmp_path), "--pairs", "1"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # from the comb's own report rather than by importing it: `phase0.comb`
+    # pulls in bpy at module scope, and this suite must stay importable without
+    # it (§9.26).
+    written = re.search(r"^\s*(\d+) coupons in", result.stdout, re.M)
+    assert written, f"the comb did not report a plate:\n{result.stdout}"
+    coupons = int(written.group(1))
+    assert coupons >= 9, "the plate should carry every combination"
+    mesh = read_stl(str(tmp_path / "comb_all.stl"))
+    stats = check(mesh, name="comb_all", components=coupons)
+    assert stats["components"] == float(coupons), (
+        f"{stats['components']:.0f} shells on a plate of {coupons} coupons; "
+        "anything over is a rib adrift"
     )

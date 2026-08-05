@@ -30,8 +30,54 @@ from blender.build import from_object, reset_scene, to_object  # noqa: E402
 from blender.cleanup import clean  # noqa: E402
 from blender.run import build_part  # noqa: E402
 from parts import port_frames  # noqa: E402
-from trackcore import MATE  # noqa: E402
+from trackcore import DEFAULT, MATE, TrackConfig, profile_area  # noqa: E402
+from trackcore.mesh import cross_section_area  # noqa: E402
 from trackcore.validate import signed_volume  # noqa: E402
+
+
+def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
+              samples: int = 9):
+    """Do the two tabs actually interleave, or do the pieces merely touch?
+
+    "Shared volume 0" is necessary and nowhere near sufficient: two pieces held
+    apart share nothing, and so do two flat ends butted together. Neither would
+    hold a car, let alone a bridge.
+
+    What a lap joint claims is stronger — that over `2 * lap_length` of overlap
+    **both** pieces have material on the same plane, each carrying its own tab,
+    the two together making up the whole section bar the clearances. That is
+    what is measured here, square to the port axis and in the port's own frame
+    so it works on a curve as well as a straight.
+
+    Returns a list of (distance, area_a, area_b) with the distance measured
+    from the port plane along the outward axis; negative is inside piece A.
+    """
+    origin = np.asarray(frame)[:3, 3]
+    axis = np.asarray(frame)[:3, 1]
+    lap = config.connector.lap_length
+    detent = config.connector.detent_offset
+
+    readings = []
+    for t in np.linspace(-lap + 0.4, lap - 0.4, samples):
+        # skip the detent: there the rib adds to one piece and the groove that
+        # receives it takes rather more from the other, by design, so the two
+        # do not sum to the section there and it proves nothing either way.
+        if abs(abs(float(t)) - detent) < 0.8:
+            continue
+        point = origin + axis * float(t)
+        readings.append((
+            float(t),
+            cross_section_area(mesh_a, point, axis, within=30.0),
+            cross_section_area(mesh_b, point, axis, within=30.0),
+        ))
+    return readings
+
+
+def tab_area(config: TrackConfig = DEFAULT) -> float:
+    """Half the section, less what the clearances take off each mating face."""
+    body, half = config.body, config.connector.fit_clearance / 2.0
+    return (2.0 * body.rail_thickness * (body.half_height - half)
+            + body.deck_thickness * (body.rail_inner - half))
 
 
 def main() -> int:

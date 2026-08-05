@@ -164,19 +164,25 @@ a name, this table wins.
 | **lap zone** | the region either side of a port plane where the joint lives |
 | **body** | everything between the two lap zones |
 
-**At a port** — the joint. Looking at the port face, the section is cut at
-`x = 0` and `z = 0` and each piece keeps two diagonally opposite quadrants:
+**At a port** — the joint. Looking at the port face, the section is read as
+**four columns** — rail, deck, deck, rail — each cut by a horizontal plane, each
+keeping the opposite side of it from its neighbour:
 
 ```
         PORT FACE                          SIDE VIEW of one rail
 
-     ┌────────┬────────┐              ────────────────┐
-     │ notch  │  TAB   │   upper      piece A, upper  │  ◄── tab
-     ├────────┼────────┤   ─────      ────────────────┼──────── lap plane
-     │  TAB   │ notch  │   lower                      │ piece B, lower
-     └────────┴────────┘              ────────────────┘
-       -x        +x                   |◄─ notch ─►|◄─ tab ─►|
+  ┌──────┬──────┬──────┬──────┐        ────────────────┐
+  │notch │ TAB  │notch │ TAB  │        piece A, upper  │  ◄── tab
+  ├──────┼──────┼──────┼──────┤ split  ────────────────┼──────── lap plane
+  │ TAB  │notch │ TAB  │notch │                        │ piece B, lower
+  └──────┴──────┴──────┴──────┘        ────────────────┘
+   -x     -x     +x     +x             |◄─ notch ─►|◄─ tab ─►|
+   rail   deck   deck   rail
 ```
+
+Four tabs: two reaching over the mate, two reaching under it. The split is at
+**mid-height** through the rail columns and **mid-deck** through the deck
+columns — see §6.2 for why it steps, and what it cost to learn.
 
 | term | meaning |
 |---|---|
@@ -733,43 +739,73 @@ impose, by choice:
 P(x, −z) = −P(x, z)                       (2)   odd in z — CHOSEN, not forced
 ```
 
-`P` odd in x and odd in z gives **diagonally opposed tabs**: tabs in the
-`(+x,+z)` and `(−x,−z)` quadrants, notches in the other two. The port face is
-cut in half at `x = 0` and at `z = 0`, and each piece keeps two diagonally
-opposite quadrants.
+`P` odd in x and odd in z gives **diagonally opposed tabs**: the minimal
+solution, two tabs, and where this design started. It generalises: any number
+of columns works, so long as the pattern stays odd in x. Four columns is what
+the section is actually built for — see below.
 
 Still true, and worth keeping because it killed several plausible sketches:
 **anything uniform in z cannot lock vertically.** That includes v1's dovetail
 tab and every tab-one-side/notch-other design. No choice of dimensions rescues
 them — they are genderless and they fall apart upward.
 
-On a U-channel the deck lies **wholly below** `z = 0`, so the split never
-crosses it. The deck joins the lower quadrant at full thickness and the upper
-tab is rail only: asymmetric per port, balanced between the two that mate, and
-free of the 0.7 mm tongues the old symmetric section forced.
+On a U-channel the deck lies **wholly below** `z = 0`, so a split at `z = 0`
+never crosses it. That was shipped, and it was wrong. The deck halves ended up
+side by side sharing nothing but a vertical face, and every bit of resistance to
+a vertical load came from the two rail laps — a rail thickness wide apiece,
+about a tenth of what the section can offer. It mated cleanly, passed every rule
+in §7, and would have hinged apart under a car.
 
-### 6.2 Geometry — the diagonal lap
+The fix is not more tabs. It is that **the split must pass through the deck**,
+and on a U-channel that means the split cannot be one plane. `h(x)` — the height
+at which the section is cut — need only be **even in x** for (1) to hold, so it
+is free to step:
+
+```
+h(x) = 0             through the rail columns
+h(x) = deck_mid      through the deck columns
+```
+
+Four columns, alternating sign, gives four tabs: two over, two under. The deck
+now laps half its thickness across nearly the whole channel, in both directions.
+
+### 6.2 Geometry — the four-column lap
 
 Nominal port plane at `y = 0`, body at `y < 0`, `lap_length = L`.
 
-Through the lap zone a piece keeps only its `(+x, +z)` and `(−x, −z)` quadrants,
-and those run on past the port plane to `y = +L` as the tabs. The other two
-quadrants are cut back to `y = −(L + fit_clearance)`, and that empty volume is
-exactly what the mating piece fills.
+Through the lap zone a piece keeps one side of `h(x)` in each column, and those
+run on past the port plane to `y = +L` as the four tabs. The other side is cut
+back to `y = −(L + fit_clearance)`, and that empty volume is exactly what the
+mating piece fills.
 
 ```
-PORT FACE, looking down the track      SIDE VIEW of the +X rail at a joint
+PORT FACE, looking down the track       SIDE VIEW of the +X rail at a joint
 
-   -X rail        +X rail                    |<--- L --->|<--- L --->|
-  ┌───────┐      ┌───────┐            ~~~~~~~~~~~~~~~~~~~~~~~~┐
-  │ notch │▒▒▒▒▒▒│  TAB  │            piece A, upper half     │
-  ├───────┤ deck ├───────┤            ~~~~~~~~~~~~~~~~~~~~~~~~┘~~~~~~~~~~~
-  │  TAB  │▒▒▒▒▒▒│ notch │            ────────────────────────┼─────────── z=0
-  └───────┘      └───────┘                       ┌~~~~~~~~~~~~~~~~~~~~~~~~
-       tab and notch run                         │     piece B, lower half
-       right across the deck        ~~~~~~~~~~~~~┘~~~~~~~~~~~~~~~~~~~~~~~~
-       as well as the rails                    y=-L        y=0        y=+L
+  ┌────┬─────────┬─────────┬────┐            |<--- L --->|<--- L --->|
+  │TAB │  notch  │   TAB   │    │     ~~~~~~~~~~~~~~~~~~~~~~~~┐
+  ├────┼─────────┼─────────┤ TAB│     piece A, upper half     │
+  │    │   TAB   │  notch  │    │     ~~~~~~~~~~~~~~~~~~~~~~~~┘~~~~~~~~~~~
+  │notch        (deck)     ├────┤     ────────────────────────┼─────────── z=0
+  └────┴─────────┴─────────┴────┘                ┌~~~~~~~~~~~~~~~~~~~~~~~~
+    rail                      rail               │     piece B, lower half
+                                     ~~~~~~~~~~~~┘~~~~~~~~~~~~~~~~~~~~~~~~
+  the rails split at mid-height,              y=-L        y=0        y=+L
+  the deck at mid-deck, and each
+  column takes the opposite side
+  from its neighbour
 ```
+
+**Where the columns divide.** Not at the rail root, which is the obvious place
+and the one place it cannot go: the cut tools are straight boxes in the port
+frame while the body is not, so over the lap zone a curve's section wanders
+sideways by about `(L + fit_clearance)² / 2·min_radius` — further than the slot
+is wide. A slot placed on the rail's inner corner then *grazes* that corner
+instead of crossing it, which is a tangential degeneracy, and `curve_45` came
+apart into five non-manifold edges. `connector.root_inset` sets the boundary a
+full drift inside the deck, where the slot cuts flat material square. The rail
+column therefore owns a strip of deck as well as its rail; that strip lies below
+the rail column's split, so it goes whole to one piece, exactly as it did
+before.
 
 Three clearances, all `fit_clearance`:
 
@@ -777,15 +813,18 @@ Three clearances, all `fit_clearance`:
   the mating lower half stops at `−fit_clearance/2`.
 - **Longitudinal**, at the tab tips. Notches are cut `L + fit_clearance` deep so
   a tab never bottoms out.
-- **Lateral**, at the centreline. The split runs through `x = 0`, so in the lap
-  zone our `+x` half slides past the mating piece's `−x` half. They need
-  clearance, and the result is a slot one clearance wide running down the
-  centreline for the length of the lap. On a 24 mm track that slot is 0.2 mm —
-  narrower than an extrusion width, and a car straddles it.
+- **Lateral**, wherever the handedness changes. Four alternating columns means
+  three such places across the section, and each becomes a slot one clearance
+  wide through the deck, running the length of the lap. The middle one is the
+  centreline; the outer two are at `rail_inner − root_inset`. They run **along**
+  the direction of travel, so a wheel rolls parallel to all three and never
+  crosses one — which is the whole reason the columns are columns and not rows.
 
-Note what the diagonal split buys structurally: the overlap is the **entire**
-cross-section, not just the rails, so the joint carries far more bending and
-shear than a rails-only lap would.
+Note what this buys structurally, and what the version before it did not. The
+material lapping vertically is now both deck columns plus both rails, in both
+directions; before the step it was two rail laps and nothing else. The road
+surface stays flat and one thickness everywhere — each point of it belongs
+wholly to one piece or the other, with no step between them.
 
 There is no butt face anywhere, so nothing is a hard datum along the joint axis.
 The detents locate the joint; see §6.7.
@@ -875,7 +914,7 @@ all carry byte-identical joints (test 9.21), and why neither `sweep.py` nor
 **The tab is swept, not added.** Every construction builds its body
 `lap_length` past each nominal port — a swept piece extends along its end
 tangent, a junction's arms run longer, a graft's body and stub both do — and the
-notch cuts alone trim that extension down to the two tab quadrants. Only the
+notch cuts alone trim that extension down to the four tab columns. Only the
 detent ribs are added solids.
 
 They used to be boxes unioned on, and it was fragile in a way worth recording.
@@ -1147,7 +1186,7 @@ place immediately by finding the missing lateral relief now recorded in §6.2.
 | assembly | **horizontal push**, and a child managed it unaided |
 | detents | felt as two distinct clicks; firm |
 | hang test (§6.7) | holds a dangling piece, no reported droop |
-| lift test | pieces stay connected — **the diagonal split blocks vertical, as designed** |
+| lift test | pieces stay connected — **the stepped split blocks vertical, as designed** |
 | pull-out along the axis | firm, but separable by hand — `detent_return_angle` **60° confirmed** |
 
 The lift and hang results are the important ones: they confirm empirically what
