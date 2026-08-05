@@ -29,18 +29,12 @@ from .mesh import MeshData, Pt2, box, prism_yz
 EPS = 0.01
 """Overlap used to keep boolean inputs from meeting face-to-face."""
 
-TAB_ROOT_OVERLAP = 1.0
-"""How far a tab reaches back **into** the body before the port plane, mm.
+def port_extension(config: TrackConfig = DEFAULT) -> float:
+    """How far a body is swept past each nominal port, mm.
 
-A tab's underside is coplanar with the face the notch cut has just created, so
-the two interlock only through the volume where they overlap. At EPS that volume
-is 0.01 mm deep — technically an overlap, practically at the solver's tolerance.
-It survived on straights and 90° arcs and failed on a 45° arc the moment the lap
-was shortened, which is the signature of a tolerance-edge degeneracy rather than
-a real geometric conflict.
-
-Reaching a whole millimetre back costs nothing: that region is body material the
-notch never removes, so the tab only duplicates what is already there."""
+    Every construction builds long and lets `cuts` trim: the tab is part of the
+    body, not a solid glued to it. See `additions` for why."""
+    return config.connector.lap_length
 
 DETENT_SINK = 0.25
 """How far a detent's base is buried behind the lap face it sits on.
@@ -92,26 +86,24 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     """Material added beyond the port plane: the two tabs and their ribs."""
     body, connector = config.body, config.connector
     hw, ri = body.half_width, body.rail_inner
-    hh = body.half_height
-    lap, clear = connector.lap_length, connector.fit_clearance
+    clear = connector.fit_clearance
     zf = clear / 2.0          # lap plane offset
-    xs = clear / 2.0          # centreline slot half-width
     d, dh = connector.detent_offset, connector.detent_height
-    root = min(TAB_ROOT_OVERLAP, connector.lap_length / 2.0)
 
     return [
-        # The (+x, +z) and (-x, -z) quadrants, running past the port plane. On
-        # a U-channel the deck lies wholly below the split plane, so it belongs
-        # entirely to the lower quadrant and is never cut in z — no thin
-        # tongues. The price is an asymmetric pair: the upper tab is rail only,
-        # the lower tab is rail plus half the deck. Both ports carry one of
-        # each, so the two mating pieces are still balanced.
-        ("tab_rail_px", box((ri, -root, zf), (hw, lap, hh))),
-        ("tab_rail_nx", box((-hw, -root, -hh), (-ri, lap, -zf))),
-        ("tab_deck_nx", box((-ri - EPS, -root, body.deck_bottom),
-                            (-xs, lap, body.deck_top))),
-        # detent ribs, inset from the rail inner face so they do not rub along
-        # the mating piece's deck edge
+        # Only the detent ribs. The **tabs are swept, not added** — every
+        # construction builds its body `lap_length` past the nominal port along
+        # the end tangent, and the notch cuts below trim that extension down to
+        # the two tab quadrants.
+        #
+        # They used to be boxes unioned on. At the port plane a box's side faces
+        # are exactly coplanar with the body's rail faces, and on a curve they
+        # are tangent there and diverge going in — a tangential union, which is
+        # the one thing an exact solver cannot resolve cleanly. Whether it
+        # survived was luck: a 45° arc built at an 8 mm lap and went
+        # non-manifold at 7, while a 90° arc of the same radius was fine at
+        # both. Sweeping the tab removes the second solid, so there is nothing
+        # to be tangent to.
         ("rib_px", prism_yz(
             _detent_polygon(config, +d, zf, -1, dh, 0.0, mirror=False),
             ri + clear, hw)),
@@ -165,8 +157,8 @@ def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
         # wholly contained in the union of these two it contributed nothing but
         # coplanar faces; on the Y, whose port planes sit at irrational angles,
         # the solver turned those into six degenerate triangles.
-        ("notch_px", box((-xs, back, -hh - EPS), (hw + out, EPS, zf))),
-        ("notch_nx", box((-hw - out, back, -zf), (xs, EPS, hh + EPS))),
+        ("notch_px", box((-xs, back, -hh - EPS), (hw + out, lap + EPS, zf))),
+        ("notch_nx", box((-hw - out, back, -zf), (xs, lap + EPS, hh + EPS))),
         # detent grooves, the mirror of a rib grown by clearance
         ("groove_px", prism_yz(
             _detent_polygon(config, -d, zf, +1, depth, grow, mirror=True),

@@ -14,6 +14,7 @@ from trackcore.connector import additions, cuts
 
 BODY = DEFAULT.body
 CONN = DEFAULT.connector
+CONN = DEFAULT.connector
 TOL = 1e-9
 
 
@@ -158,8 +159,9 @@ def test_a_stub_too_shallow_for_a_joint_is_rejected():
 
 
 def test_a_support_too_short_for_its_own_end_joints_is_rejected():
+    too_short = 2.0 * (BODY.half_height + CONN.lap_length)
     with pytest.raises(GraftInvalid, match="from its own end joints"):
-        Graft(length=20.0, depth=GRID.support_depth).validate(DEFAULT)
+        Graft(length=too_short - 1.0, depth=GRID.support_depth).validate(DEFAULT)
 
 
 def test_a_support_is_in_the_catalogue_and_is_grafted():

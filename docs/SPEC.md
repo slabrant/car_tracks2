@@ -113,19 +113,107 @@ Binding. Do not silently redefine.
 - **Winding:** faces CCW seen from outside the solid; normals outward; signed
   volume positive.
 
-| Term | Meaning |
+### 1.1 Anatomy
+
+One vocabulary, used everywhere. If code, spec and conversation disagree about
+a name, this table wins.
+
+**Across a piece** — the cross-section, or *profile*:
+
+```
+            rail top ─┐                          ┌─ rail top
+                      ▼                          ▼
+   outer face ─►    ####                        ####    ◄─ outer face
+                    ####    ← guide height →    ####
+                    ####                        ####
+   inner face ─►    ####                        ####    ◄─ inner face
+                    ##############################
+                    ##############################
+                      ▲          ▲                ▲
+               bed face   driving surface    deck (the web between the rails)
+                          (= deck top)
+
+                    |◄────── channel width ──────►|
+   |◄─────────────────── outer width ───────────────────►|
+```
+
+| term | meaning |
 |---|---|
-| **edge unit** | the primitive: one rail plus its deck stem |
-| **rail** | the tall vertical member at a deck edge |
-| **deck** | the thin horizontal web the cars drive on |
-| **profile** | the closed 2D cross-section of an N=2 piece (two edge units) |
-| **chain** | one connected run of boundary that carries a rail |
-| **port** | a connector interface; one per arm; carries no rail |
-| **arm** | one straight stub of a junction, centre to port |
+| **section** / **profile** | the closed 2D cross-section, 8 vertices (§2.1) |
+| **edge unit** | the primitive: one rail plus its share of the deck |
+| **rail** | the tall member at each edge; what guides a car |
+| **deck** | the web between the rails |
+| **driving surface** | the deck's top face, `deck_top` |
+| **bed face** | the deck's bottom face; what sits on the print bed |
+| **guide height** | how far a rail stands above the driving surface |
+| **channel** | the open space between the rails, where a car runs |
+
+**Along a piece:**
+
+```
+   port ─►|◄─ lap zone ─►|◄──────── body ────────►|◄─ lap zone ─►|◄─ port
+   plane  |              |                        |              |  plane
+      tab ├──────►                                        ◄──────┤ tab
+```
+
+| term | meaning |
+|---|---|
+| **port** | one end of a piece: the interface another piece mates to |
+| **port plane** | where two mated pieces meet; the piece's nominal end |
+| **port frame** | the port's local coordinates (§6.6) |
+| **lap zone** | the region either side of a port plane where the joint lives |
+| **body** | everything between the two lap zones |
+
+**At a port** — the joint. Looking at the port face, the section is cut at
+`x = 0` and `z = 0` and each piece keeps two diagonally opposite quadrants:
+
+```
+        PORT FACE                          SIDE VIEW of one rail
+
+     ┌────────┬────────┐              ────────────────┐
+     │ notch  │  TAB   │   upper      piece A, upper  │  ◄── tab
+     ├────────┼────────┤   ─────      ────────────────┼──────── lap plane
+     │  TAB   │ notch  │   lower                      │ piece B, lower
+     └────────┴────────┘              ────────────────┘
+       -x        +x                   |◄─ notch ─►|◄─ tab ─►|
+```
+
+| term | meaning |
+|---|---|
+| **tab** | material that runs *past* the port plane, into the mate |
+| **notch** | material cut *back* from the port plane, to receive the mate's tab |
+| **lap** | the interlocking overlap of tab and notch |
+| **lap plane** | `z = 0`, where one piece's tab lies on the other's |
+| **lap face** | a tab's surface on the lap plane |
+| **tab tip** | the far end of a tab |
+| **notch back** | the deepest point of a notch, one clearance past the tab tip |
+| **centreline slot** | the gap at `x = 0` where the two halves slide past |
+| **detent rib** | the bump that clicks in |
+| **detent groove** | what it clicks into |
+| **lead-in / return face** | a detent's shallow side and its steep side |
+
+**Junctions and supports:**
+
+| term | meaning |
+|---|---|
+| **hub** | the middle of a junction, where the arms meet |
+| **arm** | one straight stub of a junction, hub centre to port |
 | **armpit** | the corner where two adjacent arms' outer edges meet |
-| **station** | one sampled point along a swept path |
-| **ring** | a profile placed in 3D at one station |
-| **lap** | the interdigitating half-height rail joint (§6.2) |
+| **fillet** | a rounded armpit; its radius is a car's turn radius (§5.2) |
+| **chain** | one run of hub boundary that carries a rail |
+| **graft** | a stub grafted square to a piece — a support (§5.5) |
+| **stub** | the downward column of a support |
+| **leg** | an ordinary straight stood on end, between a support and a foot |
+| **foot** | a support turned over |
+
+**Sweeping** (internal, but it appears in the code):
+
+| term | meaning |
+|---|---|
+| **path** | the centreline a piece follows |
+| **station** | one sampled point along a path |
+| **ring** | the profile placed in 3D at one station |
+| **frame** | a station's `(across, tangent, up)` |
 
 ---
 
@@ -784,18 +872,24 @@ definition is why a curve's angled end, a ramp's sloped end and a junction's arm
 all carry byte-identical joints (test 9.21), and why neither `sweep.py` nor
 `hub.py` contains a line about what a joint looks like.
 
-Applying it is a boolean, under §7a. An earlier version of this section forbade
-that and required explicit topology instead. That is not achievable and the
-reasoning was wrong: through the lap zone a port's cross-section is **two
-disjoint quadrants**, so it is not a ring, and the constant-vertex-count sweep
-of §4.3 cannot express it. Building the surface by hand instead would mean
-bespoke stitching code at every port of every construction — precisely the kind
-of thing that produced v1's non-manifold output. The boolean is the safer path,
-and §7a is what makes it safe.
+**The tab is swept, not added.** Every construction builds its body
+`lap_length` past each nominal port — a swept piece extends along its end
+tangent, a junction's arms run longer, a graft's body and stub both do — and the
+notch cuts alone trim that extension down to the two tab quadrants. Only the
+detent ribs are added solids.
 
-Order matters: **cuts before additions**. A tab is added flush against the slot
-and notch boundaries the cuts define, so adding first would leave a cut tool
-coincident with a face it must not touch.
+They used to be boxes unioned on, and it was fragile in a way worth recording.
+At the port plane a box's side faces are *exactly* coplanar with the body's rail
+faces, and on a curve they are tangent there and diverge going in. A tangential
+union is the one thing an exact solver cannot resolve cleanly, so whether it
+worked was luck: a 45° arc built at an 8 mm lap and came out non-manifold at 7,
+while a 90° arc of the same radius was fine at both. Two plausible fixes —
+giving the tab a real root overlap, and widening the cut tools to clear the
+body's lateral drift — addressed real fragilities and did nothing for this one.
+
+Sweeping the tab removes the second solid, so there is nothing to be tangent to.
+The whole catalogue now builds at every lap length down to 4 mm, where before it
+stopped at 7.4, and each part comes out with fewer faces than before.
 
 Two details are load-bearing, and both were found by the Y junction, whose port
 planes sit at irrational angles where the X and T's arithmetic is exact:
@@ -1302,8 +1396,12 @@ Still open:
    change rather than a construction change — `edge_unit.py` owns the section,
    so a texture would live there and every part would inherit it. Worth
    deciding only after a printed set has been played with.
-3. **The tab is unioned on, and should be swept.** Open, and it is what holds
-   `lap_length` at 8.0.
+3. ~~**The tab is unioned on, and should be swept.**~~ **Done.** See §6.6. The
+   catalogue now builds at every lap down to 4 mm, and `lap_length` is 6.0.
+   Kept here only for the diagnosis, which generalises: a straight solid unioned
+   onto a curved body is tangent to it wherever their faces are meant to align,
+   and tangency is what an exact solver cannot resolve. If something like it
+   recurs, look for a union whose inputs are meant to be flush.
 
    A tab is a straight box added to the body at each port. At the port plane its
    side faces are *exactly* coplanar with the body's rail faces, and on a curve

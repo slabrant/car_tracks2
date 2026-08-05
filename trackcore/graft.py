@@ -80,12 +80,18 @@ class Graft:
 
     # -- solids ----------------------------------------------------------
 
-    def solids(self, config: TrackConfig = DEFAULT) -> list[MeshData]:
+    def solids(self, config: TrackConfig = DEFAULT,
+               extend: float = 0.0) -> list[MeshData]:
+        """Body and stub, each run `extend` past their ports for §6.6 to trim."""
         config.validate()
         self.validate(config)
-        stub = sweep(self.stub_path(config), config)
-        return [sweep(self.body_path(), config),
-                stub.transformed(self.stub_transform(config))]
+
+        body = Path.chain(Line(self.length + 2.0 * extend))
+        stub = Path.chain(Line(config.body.deck_top + self.depth + extend))
+        shift = np.eye(4)
+        shift[1, 3] = -extend
+        return [sweep(body, config).transformed(shift),
+                sweep(stub, config).transformed(self.stub_transform(config))]
 
     def port_matrices(self, config: TrackConfig = DEFAULT) -> list[np.ndarray]:
         """Three ports: both ends of the body, and the foot of the stub.

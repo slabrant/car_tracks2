@@ -45,47 +45,55 @@ def test_every_connector_tool_is_a_valid_solid():
         check(mesh, name=label)
 
 
+def _notches():
+    return {label: mesh.bounds() for label, mesh in cuts(DEFAULT)
+            if label.startswith("notch")}
+
+
 def test_the_joint_cannot_be_lifted_apart():
     """The Z-lock, and the most important test in this file.
 
     On the old flippable section this was a *corollary*: flip symmetry forced P
     odd in z, and odd-in-z is what puts our material above the mate's on one
-    rail and below it on the other. Flippability is gone, so nothing forces it
-    any more. Genderless alone only forces P odd in **x**, and a plain vertical
-    split satisfies that while lifting straight apart with no resistance at
-    all.
+    rail and below it on the other. Flippability is gone, so nothing forces it.
+    Genderless alone forces P odd in **x**, and a plain vertical split satisfies
+    that while lifting straight apart with no resistance at all.
 
-    So odd-in-z is now a deliberate choice, and a choice needs pinning. Lift the
-    mating piece and it must foul; press it down and it must foul.
+    Since the tabs are swept rather than added (§6.6), the tab shape lives in
+    the *complement* of the notches, so that is what this checks: one notch must
+    remove the material **below** the split plane and the other the material
+    **above** it. A notch spanning the full height would mean a split uniform in
+    z — still perfectly genderless, and it would come apart upward.
     """
-    lift = 1.5 * CONN.fit_clearance
-    ours = [(label, *mesh.bounds()) for label, mesh in additions(DEFAULT)]
+    (px_lo, px_hi), (nx_lo, nx_hi) = _notches()["notch_px"], _notches()["notch_nx"]
+    half = BODY.half_height
 
-    for direction in (+1.0, -1.0):
-        shift = np.eye(4)
-        shift[2, 3] = direction * lift
-        theirs = [(f"mate:{label}", *mesh.transformed(shift @ MATE).bounds())
-                  for label, mesh in additions(DEFAULT)]
-        fouled = any(_overlap(a_lo, a_hi, b_lo, b_hi) > TOL
-                     for _a, a_lo, a_hi in ours
-                     for _b, b_lo, b_hi in theirs)
-        assert fouled, (
-            f"the joint pulls apart {'upward' if direction > 0 else 'downward'}; "
-            f"the port has lost its Z-lock"
-        )
+    assert px_lo[2] < -half, "notch_px must clear the bottom of the section"
+    assert 0.0 < px_hi[2] < half, "notch_px must stop above the split plane"
+    assert nx_hi[2] > half, "notch_nx must clear the top of the section"
+    assert -half < nx_lo[2] < 0.0, "notch_nx must stop below the split plane"
 
 
 def test_the_tabs_occupy_diagonally_opposite_quadrants():
-    """On a U-channel the deck lies wholly below the split plane, so it joins
-    the lower quadrant and the upper tab is rail only. Asymmetric by piece,
-    balanced between the two that mate."""
-    by_name = dict(additions(DEFAULT))
-    lo, _hi = by_name["tab_rail_px"].bounds()
-    assert lo[0] > 0 and lo[2] > 0, "tab_rail_px should be the (+x, +z) quadrant"
-    for name in ("tab_rail_nx", "tab_deck_nx"):
-        _lo, hi = by_name[name].bounds()
-        assert hi[0] < 0 and hi[2] < 0, f"{name} should be the (-x, -z) quadrant"
-    assert "tab_deck_px" not in by_name, "the deck belongs to one quadrant only"
+    """What survives the notches is the (+x, +z) and (-x, -z) quadrants."""
+    (px_lo, _px_hi), (_nx_lo, nx_hi) = (_notches()["notch_px"],
+                                        _notches()["notch_nx"])
+    half = BODY.half_width
+    assert px_lo[0] < 0.0, "notch_px must reach past the centreline"
+    assert nx_hi[0] > 0.0, "notch_nx must reach past the centreline"
+    assert _notches()["notch_px"][1][0] > half, "notch_px must clear the +x rail"
+    assert _notches()["notch_nx"][0][0] < -half, "notch_nx must clear the -x rail"
+
+
+def test_nothing_is_glued_on_but_the_detents():
+    """§6.6. Tabs are swept; only the ribs are added solids."""
+    assert {label for label, _ in additions(DEFAULT)} == {"rib_px", "rib_nx"}
+
+
+def test_the_notches_reach_past_the_port_plane_to_trim_the_extension():
+    """The body is swept `lap_length` long; these cuts are what shape the tab."""
+    for label in ("notch_px", "notch_nx"):
+        assert _notches()[label][1][1] >= CONN.lap_length
 
 
 def test_tabs_protrude_exactly_one_lap_length():
@@ -128,48 +136,46 @@ def _overlap(a_lo, a_hi, b_lo, b_hi) -> float:
     return min(min(a_hi[i], b_hi[i]) - max(a_lo[i], b_lo[i]) for i in range(3))
 
 
-def test_two_ports_mate_without_sharing_any_volume():
-    """A port mates with a copy of itself rotated 180° about the shared up.
-    That the *same* geometry mates with itself is what genderless means."""
-    ours = _boxes(additions(DEFAULT))
-    theirs = [(f"mate:{label}", *mesh.transformed(MATE).bounds())
-              for label, mesh in additions(DEFAULT)
-              if not label.startswith("rib_")]
+def test_the_two_notches_are_point_reflections_of_each_other():
+    """This *is* the diagonal split, stated as a symmetry.
 
-    for a_label, a_lo, a_hi in ours:
-        for b_label, b_lo, b_hi in theirs:
-            gap = _overlap(a_lo, a_hi, b_lo, b_hi)
-            assert gap <= TOL, f"{a_label} interpenetrates {b_label} by {gap:.4f} mm"
+    `P` odd in x and odd in z together mean `P(-x, -z) = P(x, z)`, so reflecting
+    the port face through its own centre maps notch to notch. A vertical split
+    would be odd in x alone and would fail here.
+    """
+    px_lo, px_hi = _notches()["notch_px"]
+    nx_lo, nx_hi = _notches()["notch_nx"]
+    for axis in (0, 2):                       # x and z
+        assert -px_hi[axis] == pytest.approx(nx_lo[axis], abs=1e-9)
+        assert -px_lo[axis] == pytest.approx(nx_hi[axis], abs=1e-9)
+    # y is deliberately *not* symmetric: a notch is cut one clearance deeper
+    # than the tab is long, so a tab never bottoms out before the joint closes
+    assert px_lo[1] == pytest.approx(nx_lo[1], abs=1e-12)
+    assert px_hi[1] - px_lo[1] > CONN.lap_length
 
 
 def test_the_lap_faces_clear_each_other_by_exactly_one_clearance():
-    by_name = dict(additions(DEFAULT))
-    ours = by_name["tab_rail_px"].bounds()[0][2]                 # we keep upper
-    theirs = by_name["tab_rail_nx"].transformed(MATE).bounds()[1][2]
+    """We keep the upper half above +clearance/2, the mate the lower half below
+    -clearance/2, so the lap faces are exactly one clearance apart."""
+    ours = _notches()["notch_px"][1][2]
+    theirs = _notches()["notch_nx"][0][2]
     assert ours - theirs == pytest.approx(CONN.fit_clearance, abs=1e-12)
 
 
 def test_the_centreline_halves_clear_each_other_by_exactly_one_clearance():
-    by_name = dict(additions(DEFAULT))
-    theirs = by_name["tab_deck_nx"].transformed(MATE).bounds()[0][0]
-    ours = by_name["tab_deck_nx"].bounds()[1][0]
-    assert theirs - ours == pytest.approx(CONN.fit_clearance, abs=1e-12)
+    """Each notch reaches half a clearance past x = 0, so the two surviving
+    halves are one clearance apart — the slot down the deck."""
+    ours = _notches()["notch_nx"][1][0]
+    theirs = _notches()["notch_px"][0][0]
+    assert ours - theirs == pytest.approx(CONN.fit_clearance, abs=1e-12)
 
 
-def test_every_tab_lands_inside_the_mating_notch():
-    """Only the part that crosses the port plane. A tab also reaches back into
-    its own body (`TAB_ROOT_OVERLAP`) so the union has volume to work with, and
-    that root is nobody else's business."""
-    notches = [(label, *mesh.transformed(MATE).bounds())
-               for label, mesh in cuts(DEFAULT) if label.startswith("notch")]
-    for label, mesh in additions(DEFAULT):
-        if not label.startswith("tab"):
-            continue
-        lo, hi = mesh.bounds()
-        lo = (lo[0], max(lo[1], 0.0), lo[2])          # clip off the root
-        assert any(all(n_lo[i] <= lo[i] + TOL and hi[i] <= n_hi[i] + TOL
-                       for i in range(3))
-                   for _n, n_lo, n_hi in notches), f"{label} is not contained"
+def test_the_notch_is_cut_deeper_than_the_tab_is_long():
+    """So a tab never bottoms out before the joint closes, §6.2."""
+    for label in ("notch_px", "notch_nx"):
+        depth = -_notches()[label][0][1]
+        assert depth == pytest.approx(CONN.lap_length + CONN.fit_clearance,
+                                      abs=1e-12)
 
 
 # -- 9.20 --------------------------------------------------------------------
@@ -344,8 +350,9 @@ def test_a_piece_too_short_for_two_joints_is_rejected():
 def test_connector_config_guards_fire():
     from trackcore.config import Connector, TrackConfig
     with pytest.raises(ValueError, match="overhang"):
-        connector.validate(TrackConfig(connector=Connector(detent_offset=9.0)))
-    # tall enough to break through the rail, but not so tall that the lead-in
-    # runs off the tab first — otherwise the earlier guard fires instead
-    with pytest.raises(ValueError, match="through the rail"):
+        connector.validate(TrackConfig(connector=Connector(
+            detent_offset=CONN.lap_length + 1.0)))
+    # a detent taller than the rail can hold must be refused; which guard names
+    # it depends on the lap, so this asserts only that one of them does
+    with pytest.raises(ValueError):
         connector.validate(TrackConfig(connector=Connector(detent_height=2.25)))

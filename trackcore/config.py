@@ -88,26 +88,26 @@ class Connector:
     and is carried over: the mating faces it governs — the lap plane, the
     centreline, the tab tips — are mechanically unchanged by the section swap.
 
-    `lap_length` stays at 8.0 for now, and **not** because 8.0 is right.
+    `lap_length` is **6.0**, down from 8.0.
 
-    Shortening it is attractive: strain at the tab root is `3·δ·h / 2a²`, so a
-    shorter lap demands a shallower detent, but retention goes *up* rather than
-    down, because stiffness grows as `1/a³` while the allowed deflection only
-    falls as `a²` — force scales as `1/a`. At 6.0 with a 0.35 mm detent the root
-    strain is the same 0.8 % it is at 8.0 with 0.50 mm, and pull-out is about a
-    third higher, for a joint 4 mm shorter.
+    Shortening is not the compromise it looks like. Strain at the tab root goes
+    as `3·δ·h / 2a²`, so a shorter lap demands a shallower detent — but the tab
+    also stiffens as `1/a³` while the deflection it may take only falls as `a²`,
+    so retention scales as `1/a` and goes **up**. At 6.0 with a 0.35 mm detent
+    the root strain is the same 0.8 % it was at 8.0 with 0.50 mm, pull-out is
+    about a third higher, and the joint is 4 mm shorter — which matters most to
+    the shortest parts, where it was most of the piece.
 
-    It is held at 8.0 because below about 7.4 a 45° arc comes out non-manifold.
-    That is a solver failure, not a geometry conflict — see §11.3 — and the fix
-    is to sweep the tab rather than union it on. Until that is done, 8.0 is the
-    value the whole catalogue is known to build at, and the Phase 0 comb tests
-    the shorter ones on straights, which are unaffected.
+    It could go shorter still: the whole catalogue builds down to 4.0. What
+    stops it is print resolution, not mechanics. Below about 0.3 mm a detent is
+    one or two layers and will vary part to part, and that is what the Phase 0
+    comb measures.
     """
 
-    lap_length: float = 8.0
+    lap_length: float = 6.0
     fit_clearance: float = 0.15
-    detent_offset: float = 4.0
-    detent_height: float = 0.50
+    detent_offset: float = 3.0
+    detent_height: float = 0.35
     detent_lead_angle_deg: float = 30.0
     detent_return_angle_deg: float = 60.0
 

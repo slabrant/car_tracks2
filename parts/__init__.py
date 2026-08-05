@@ -16,7 +16,9 @@ from typing import Callable
 
 from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Path, Piece, Ramp,
                        TrackConfig, applied, port_matrices, sweep)
+from trackcore.connector import port_extension
 from trackcore.connector import validate as validate_connector
+from trackcore.mesh import translation
 from trackcore.path import DEFAULT_PORT_CLEAR
 
 PathBuilder = Callable[..., Path]
@@ -265,10 +267,20 @@ def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
     applied here rather than inside either construction. Neither `sweep.py` nor
     `hub.py` knows what a joint looks like.
     """
+    extend = port_extension(config) if connectors else 0.0
+
     if name in PATHS:
         path = PATHS[name](**kwargs)
-        solids: tuple = (sweep(path, config),)
         matrices = port_matrices(path, config)
+        if extend:
+            # sweep past both ports along the end tangents; the notch cuts trim
+            # the extension down to the tab quadrants (§6.6). Translating back
+            # by `extend` puts the nominal start at the origin again.
+            long_path = Path.chain(Line(extend), *path.primitives, Line(extend))
+            solids: tuple = (sweep(long_path, config).transformed(
+                translation(0.0, -extend, 0.0)),)
+        else:
+            solids = (sweep(path, config),)
         reach = 2.0 * (config.connector.lap_length + config.connector.fit_clearance)
         if connectors and path.length <= reach:
             raise ValueError(
@@ -277,12 +289,12 @@ def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
             )
     elif name in HUBS:
         hub = HUBS[name](**kwargs)
-        solids = tuple(hub.solids(config))
         matrices = hub.port_matrices(config)
+        solids = tuple(hub.solids(config, extend=extend))
     elif name in GRAFTS:
         graft = GRAFTS[name](**kwargs)
-        solids = tuple(graft.solids(config))
         matrices = graft.port_matrices(config)
+        solids = tuple(graft.solids(config, extend=extend))
     else:
         raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
 

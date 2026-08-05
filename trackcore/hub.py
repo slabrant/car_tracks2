@@ -236,7 +236,17 @@ class Hub:
 
     # -- solids ----------------------------------------------------------
 
-    def solids(self, config: TrackConfig = DEFAULT) -> list[MeshData]:
+    def extended(self, distance: float) -> "Hub":
+        """The same hub with every arm reaching `distance` further.
+
+        Ports stay where they were; only the metal runs on. §6.6 trims it."""
+        if distance == 0.0:
+            return self
+        return Hub(tuple(Arm(a.angle, a.port_distance + distance)
+                         for a in self.arms), self.corner_radius)
+
+    def solids(self, config: TrackConfig = DEFAULT,
+               extend: float = 0.0) -> list[MeshData]:
         """The prismatic slabs, to be unioned. §5.3.
 
         Rail prisms span the **full** height rather than only above and below
@@ -245,6 +255,8 @@ class Hub:
         """
         config.validate()
         self.validate(config)
+        if extend:
+            return self.extended(extend).solids(config)
 
         body = config.body
         out = [prism(_as_pairs(self.deck_region(config)),
