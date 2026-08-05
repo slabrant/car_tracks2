@@ -1,9 +1,9 @@
-"""Validate exported STLs against docs/SPEC.md §7, without Blender.
+"""Validate exported STLs against docs/SPEC.md §7. No Blender needed.
 
-    python3 phase0/check.py phase0/out/*.stl
+    python3 check_stl.py out/set/*.stl
 
-build_coupons.py already validates the solid it builds. This re-checks what
-actually landed on disk, because STL stores float32 and the round trip can
+`blender/run.py` already validates every part before writing it. This re-checks
+what actually landed on disk, because STL stores float32 and the round trip can
 collapse vertices that were distinct in the model.
 """
 
@@ -13,13 +13,13 @@ import glob
 import os
 import sys
 
-from geom import read_stl
-from validate import MeshInvalid, check
+from trackcore import check, read_stl
+from trackcore.validate import MeshInvalid
 
 
 def main(argv: list[str]) -> int:
     paths: list[str] = []
-    for pattern in argv or ["phase0/out/*.stl"]:
+    for pattern in argv or ["out/set/*.stl"]:
         paths.extend(sorted(glob.glob(pattern)))
     if not paths:
         print("no STL files matched")
@@ -28,8 +28,7 @@ def main(argv: list[str]) -> int:
     failures = 0
     for path in paths:
         mesh = read_stl(path)
-        lo, hi = mesh.bounds()
-        size = hi - lo
+        size = mesh.size()
         try:
             stats = check(mesh, name=os.path.basename(path))
             verdict = (f"OK   solids={int(stats['components'])} "
@@ -38,8 +37,8 @@ def main(argv: list[str]) -> int:
         except MeshInvalid as exc:
             verdict = f"FAIL {exc}"
             failures += 1
-        print(f"{os.path.basename(path):28s} "
-              f"{size[0]:6.1f} x {size[1]:5.1f} x {size[2]:5.1f} mm   {verdict}")
+        print(f"{os.path.basename(path):24s} "
+              f"{size[0]:6.1f} x {size[1]:6.1f} x {size[2]:5.1f} mm   {verdict}")
 
     print()
     if failures:
