@@ -123,7 +123,14 @@ MATINGS = [
 def test_two_finished_parts_actually_fit_together(a, port_a, b, port_b):
     """The strongest claim Phase 3 can make. Not that the port is symmetric on
     paper — that two real solids, booleans and cleanup included, share no
-    volume when mated. Any port mates any port, either way round."""
+    volume when mated *and* interleave once they do. Any port mates any port,
+    either way round.
+
+    Sharing no volume is the weaker half and easily satisfied by a joint that
+    would fall straight apart: two pieces held apart share nothing, and so do
+    two flat ends butted together. `mate_check` measures the lap zone as well,
+    and only prints "mate OK" if both pieces carry a tab right through it.
+    """
     result = subprocess.run(
         [BLENDER, "--background", "--python", "blender/mate_check.py", "--",
          "--a", a, "--b", b, "--port-a", str(port_a), "--port-b", str(port_b)],

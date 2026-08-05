@@ -1,4 +1,4 @@
-"""Mate two built parts and prove they share no volume. docs/SPEC.md §9.19.
+"""Mate two built parts and prove the joint is real. docs/SPEC.md §9.19.
 
     blender --background --python blender/mate_check.py -- --a curve --b x_junction
 
@@ -7,10 +7,16 @@ symmetric on paper, but that two *finished* solids — booleans, cleanup and all
 actually fit together. It is the Phase 0 coupon check generalised to every part
 in the catalogue.
 
-The two pieces are held a probe gap apart first. A joint is designed to touch,
-and a contact makes an exact solver emit slivers of float noise that are not
-interference; the gap is far smaller than any real clearance, so it clears the
-contact without hiding anything a printed part could feel.
+Two claims, and the second is the one with teeth:
+
+1. **No interference.** The pieces are held a probe gap apart first. A joint is
+   designed to touch, and a contact makes an exact solver emit slivers of float
+   noise that are not interference; the gap is far smaller than any real
+   clearance, so it clears the contact without hiding anything a printed part
+   could feel.
+2. **They interleave.** Sharing no volume proves almost nothing on its own —
+   two pieces held apart share none, and neither do two flat ends butted
+   together. See `interlock`.
 """
 
 from __future__ import annotations
@@ -73,13 +79,6 @@ def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
     return readings
 
 
-def tab_area(config: TrackConfig = DEFAULT) -> float:
-    """Half the section, less what the clearances take off each mating face."""
-    body, half = config.body, config.connector.fit_clearance / 2.0
-    return (2.0 * body.rail_thickness * (body.half_height - half)
-            + body.deck_thickness * (body.rail_inner - half))
-
-
 def main() -> int:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
@@ -104,6 +103,11 @@ def main() -> int:
     placement = frame_a @ gap @ MATE @ np.linalg.inv(frame_b)
     b.matrix_world = Matrix([list(row) for row in placement])
 
+    # before the boolean: it consumes `b`, and the interlock measurement below
+    # still needs it
+    placed_a = from_object(a)
+    placed_b = from_object(b).transformed(placement)
+
     probe = a.copy()
     probe.data = a.data.copy()
     collection.objects.link(probe)
@@ -121,6 +125,21 @@ def main() -> int:
         print(f"  INTERFERENCE at x[{lo[0]:.3f},{hi[0]:.3f}] "
               f"y[{lo[1]:.3f},{hi[1]:.3f}] z[{lo[2]:.3f},{hi[2]:.3f}]")
         return 1
+
+    # ... and that they interleave rather than merely failing to collide.
+    readings = interlock(placed_a, placed_b, frame_a)
+    whole = profile_area(DEFAULT.body)
+    worst = min(min(area_a, area_b) for _t, area_a, area_b in readings)
+    thinnest = min(area_a + area_b for _t, area_a, area_b in readings)
+
+    print(f"  lap zone: each piece carries at least {worst:.3f} mm², "
+          f"together at least {thinnest:.3f} of {whole:.3f}")
+    if worst < 0.4 * whole:
+        for t, area_a, area_b in readings:
+            print(f"    {t:+6.2f} mm   A {area_a:7.3f}   B {area_b:7.3f}")
+        print("  NOT INTERLOCKED: one piece runs out inside the lap zone")
+        return 1
+
     print("  mate OK")
     return 0
 
