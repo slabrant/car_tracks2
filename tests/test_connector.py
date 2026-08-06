@@ -50,129 +50,149 @@ def _notches():
             if label.startswith("notch")}
 
 
-RAIL_SPLIT = 0.0
-"""Where the rail columns are cut. Mid-height."""
+SPLIT = BODY.deck_mid
+"""One flat plane, and it lies inside the deck. §6.1."""
 
 
-def _deck_split() -> float:
-    return BODY.deck_mid
+def _removed(x: float, z: float, y: float = 1.0) -> bool:
+    """Is this point of the port face cut away? The tabs are the complement."""
+    for _label, (lo, hi) in _notches().items():
+        if (lo[0] <= x <= hi[0] and lo[1] <= y <= hi[1] and lo[2] <= z <= hi[2]):
+            return True
+    return False
 
 
-def _column_extent(prefix: str) -> tuple[float, float]:
-    if prefix == "notch_rail":
-        return -BODY.half_height, BODY.half_height
-    return BODY.deck_bottom, BODY.deck_top
+def _in_section(x: float, z: float) -> bool:
+    if abs(x) > BODY.half_width:
+        return False
+    if abs(x) >= BODY.rail_inner:
+        return abs(z) <= BODY.half_height              # rail
+    return BODY.deck_bottom <= z <= BODY.deck_top      # deck
 
 
-def _over_and_under(prefix: str):
-    """The column pair's two notches, told apart by what they remove.
+def _sample_points(margin: float = 0.25):
+    """Section points well clear of every clearance band, so a hit or a miss
+    is about the design and not about which side of a 0.15 mm slot we landed."""
+    from trackcore.connector import deck_column
+    q = deck_column(DEFAULT)
+    seams = (0.0, q, -q)
+    for x in np.linspace(-BODY.half_width + 0.05, BODY.half_width - 0.05, 181):
+        if any(abs(abs(x) - abs(s)) < margin for s in seams):
+            continue
+        for z in np.linspace(BODY.deck_bottom + 0.05, BODY.half_height - 0.05, 61):
+            if abs(z - SPLIT) < margin or not _in_section(float(x), float(z)):
+                continue
+            yield float(x), float(z)
 
-    Which of `_px` / `_nx` removes the upper side is not fixed: the deck
-    columns run opposite to the rail columns, which is exactly the alternation
-    that puts one tab over and one under on each side of the track. Sort them
-    by what they do rather than by their name.
+
+def test_the_port_is_genderless():
+    """The one property the whole joint rests on, tested directly.
+
+    Two ports meet under `MATE`, a 180° turn about the shared up axis, which
+    sends x to -x and leaves z alone. So the mate's material at `(x, z)` is
+    ours at `(-x, z)`, and for tab to meet notch everywhere the pattern must
+    satisfy `kept(x, z) == removed(-x, z)`.
+
+    Sampled over the section rather than argued from the tools' bounding
+    boxes — a design can be odd in x on paper and lose it in the arithmetic,
+    and this notices either way. It is also indifferent to how many columns
+    there are, which the bounds arithmetic was not.
     """
-    px, nx = _notches()[f"{prefix}_px"], _notches()[f"{prefix}_nx"]
-    over, under = sorted((px, nx), key=lambda bounds: bounds[0][2])[::-1]
-    return over, under
+    checked = 0
+    for x, z in _sample_points():
+        if not _in_section(-x, z):
+            continue
+        checked += 1
+        assert _removed(x, z) != _removed(-x, z), (
+            f"({x:.2f}, {z:.2f}) and its mirror are both "
+            f"{'cut away' if _removed(x, z) else 'kept'}; the port would meet "
+            f"{'a void' if _removed(x, z) else 'itself'} there"
+        )
+    assert checked > 2000, "not enough of the section was sampled"
 
 
-def test_there_are_four_tab_columns_two_over_and_two_under():
-    """§6.1. Rail, deck, deck, rail, alternating which side of the split they
-    keep — so each side of the track carries one tab reaching over the mate and
-    one reaching under it."""
-    assert set(_notches()) == {"notch_rail_px", "notch_rail_nx",
-                               "notch_deck_px", "notch_deck_nx"}
+def test_there_are_six_columns_two_rails_and_four_decks():
+    """§6.1. The rails carry no deck and the deck is quartered."""
+    from trackcore.connector import deck_column
+    q = deck_column(DEFAULT)
+    assert q == pytest.approx(BODY.rail_inner / 2.0)
+
+    # walk the section at deck height and count the changes of handedness
+    z = BODY.deck_bottom + 0.2
+    xs = np.linspace(-BODY.rail_inner + 0.05, BODY.rail_inner - 0.05, 2001)
+    states = [_removed(float(x), z) for x in xs]
+    seams = sum(1 for a, b in zip(states, states[1:]) if a != b)
+    assert seams == 3, f"expected 3 seams across the deck, saw {seams}"
 
 
-def test_the_joint_cannot_be_lifted_apart():
-    """The Z-lock, and the most important test in this file.
+def test_a_rail_column_carries_no_deck():
+    """What the six-column split is for.
 
-    On the old flippable section this was a *corollary*: flip symmetry forced P
-    odd in z, and odd-in-z is what puts our material above the mate's on one
-    column and below it on the other. Flippability is gone, so nothing forces
-    it. Genderless alone forces P odd in **x**, and a plain vertical split
-    satisfies that while lifting straight apart with no resistance at all.
-
-    Since the tabs are swept rather than added (§6.6), the tab shape lives in
-    the *complement* of the notches, so that is what this checks: in every
-    column one notch must remove the material **below** its split and the other
-    the material **above** it.
+    A rail column is pure rail: it runs the same way as the deck column beside
+    it, so the join between them needs no clearance and there is no seam at the
+    rail root. That matters twice over — the road has no slot where a wheel
+    runs closest to the rail, and no cut plane grazes the concave corner that
+    runs the length of the piece, which is what broke `curve_45`.
     """
-    for prefix in ("notch_rail", "notch_deck"):
-        over, under = _over_and_under(prefix)
-        floor, ceiling = _column_extent(prefix)
-        split = RAIL_SPLIT if prefix == "notch_rail" else _deck_split()
-
-        # the one that removes what is *below* the split stops just above it
-        assert under[0][2] < floor, f"{prefix}: must clear the bottom"
-        assert split < under[1][2] < ceiling, (
-            f"{prefix}: the lower notch must stop above its split, in material")
-        # and vice versa
-        assert over[1][2] > ceiling, f"{prefix}: must clear the top"
-        assert floor < over[0][2] < split, (
-            f"{prefix}: the upper notch must stop below its split, in material")
+    z = BODY.deck_bottom + 0.2                  # inside the deck
+    for side in (+1.0, -1.0):
+        root = side * BODY.rail_inner
+        inboard = _removed(root - side * 0.3, z)
+        outboard = _removed(root + side * 0.3, z)
+        assert inboard == outboard, (
+            f"handedness changes at the rail root x={root:.2f}; the rail would "
+            f"take a strip of deck and the road would carry a slot there"
+        )
 
 
-def test_the_deck_is_lapped_and_not_merely_butted():
-    """The whole reason the split is stepped, and the bug it was written for.
+def test_the_split_lies_inside_the_deck_so_the_deck_laps():
+    """The bug this whole design exists to fix.
 
-    The first U-channel joint used one flat split at mid-height. On a U the
-    deck lies wholly below mid-height, so that plane never touched it: the deck
-    halves sat side by side, sharing only a vertical face, and every bit of
-    resistance to a vertical load came from the two rail laps. It looked fine,
-    mated cleanly, passed every rule, and would have hinged apart under a car.
-
-    A deck notch that stops outside the deck's own thickness is that bug.
+    The first U-channel joint split at mid-height. On a U the deck lies wholly
+    below mid-height, so that plane never touched it: the deck halves sat side
+    by side sharing only a vertical face, and every bit of resistance to a
+    vertical load came from the two rail laps. It mated cleanly, passed every
+    rule in §7, and would have hinged apart under a car.
     """
-    over, under = _over_and_under("notch_deck")
-    for label, stop in (("upper", over[0][2]), ("lower", under[1][2])):
-        assert BODY.deck_bottom < stop < BODY.deck_top, (
-            f"the {label} deck notch stops at z={stop:.3f}, outside the deck "
-            f"[{BODY.deck_bottom:.3f}, {BODY.deck_top:.3f}]; the deck would be "
-            f"split vertically and carry no lap at all"
+    assert BODY.deck_bottom < SPLIT < BODY.deck_top
+    z_lo, z_hi = SPLIT - 0.2, SPLIT + 0.2
+    for x in np.linspace(-BODY.rail_inner + 0.4, BODY.rail_inner - 0.4, 97):
+        x = float(x)
+        if any(abs(abs(x) - abs(s)) < 0.3
+               for s in (0.0, BODY.rail_inner / 2.0)):
+            continue
+        assert _removed(x, z_lo) != _removed(x, z_hi), (
+            f"at x={x:.2f} the deck is not lapped: the same piece keeps both "
+            f"sides of the split"
         )
 
 
 def test_the_deck_carries_most_of_the_vertical_bearing():
-    """Not merely lapped — lapped over most of the width.
-
-    Rail laps are a rail thickness wide apiece. The deck laps span nearly the
-    whole channel, and that ratio is the point of the four-column split.
-    """
-    from trackcore.connector import root_inset
-    column = BODY.rail_inner - root_inset(DEFAULT) - CONN.fit_clearance
-    rail = BODY.rail_thickness
-    assert column > 5.0 * rail, (
-        f"deck lap {column:.2f} mm wide against a rail lap {rail:.2f} mm; the "
+    """Not merely lapped — lapped over most of the width."""
+    z_lo, z_hi = SPLIT - 0.2, SPLIT + 0.2
+    xs = np.linspace(-BODY.half_width + 0.05, BODY.half_width - 0.05, 4001)
+    step = float(xs[1] - xs[0])
+    deck = sum(step for x in xs if abs(x) < BODY.rail_inner
+               and _removed(float(x), z_lo) != _removed(float(x), z_hi))
+    rail = sum(step for x in xs if abs(x) >= BODY.rail_inner
+               and _removed(float(x), z_lo) != _removed(float(x), z_hi))
+    assert deck > 4.0 * rail, (
+        f"deck laps {deck:.2f} mm of width against the rails' {rail:.2f}; the "
         f"deck should dominate"
     )
-
-
-def test_the_column_boundary_stays_off_the_rail_root():
-    """`root_inset`, and the failure that bought it.
-
-    Put the boundary exactly at the rail's inner face and the slot's side
-    grazes a concave corner that runs the length of the piece. On a curve the
-    section wanders further than the slot is wide, and `curve_45` came apart
-    into five non-manifold edges. The boundary belongs in flat deck.
-    """
-    from trackcore.connector import root_inset
-    reach = CONN.lap_length + CONN.fit_clearance
-    drift = reach * reach / (2.0 * DEFAULT.min_radius)
-    assert root_inset(DEFAULT) > drift, "boundary must clear the worst drift"
-    assert BODY.rail_inner - root_inset(DEFAULT) > 2.0 * CONN.fit_clearance
+    assert deck + rail > 0.85 * 2.0 * BODY.rail_inner
 
 
 def test_nothing_is_glued_on_but_the_detents():
     """§6.6. Tabs are swept; only the ribs are added solids."""
-    assert {label for label, _ in additions(DEFAULT)} == {"rib_px", "rib_nx"}
+    assert all(label.startswith("rib_") for label, _ in additions(DEFAULT))
+    assert additions(DEFAULT), "there should be at least one rib"
 
 
 def test_the_notches_reach_past_the_port_plane_to_trim_the_extension():
     """The body is swept `lap_length` long; these cuts are what shape the tab."""
-    for label in _notches():
-        assert _notches()[label][1][1] >= CONN.lap_length
+    for label, bounds in _notches().items():
+        assert bounds[1][1] >= CONN.lap_length, label
 
 
 def test_tabs_protrude_exactly_one_lap_length():
@@ -182,29 +202,26 @@ def test_tabs_protrude_exactly_one_lap_length():
 
 def test_every_cut_is_taken_one_clearance_deeper_than_the_tab_is_long():
     """So a tab never bottoms out before the joint closes, §6.2."""
-    by_name = dict(cuts(DEFAULT))
-    for name, mesh in by_name.items():
+    for name, mesh in cuts(DEFAULT):
         if name.startswith("groove"):
             continue
         assert mesh.bounds()[0][1] == pytest.approx(
             -(CONN.lap_length + CONN.fit_clearance), abs=TOL), name
 
 
-def test_the_two_deck_notches_between_them_cut_the_centreline_slot():
-    """§6.2. They overlap across |x| < clearance/2 and remove every z in the
-    deck there, so there is no separate slot tool to contribute coplanar
-    faces."""
-    px_lo, _px_hi = _notches()["notch_deck_px"]
-    _nx_lo, nx_hi = _notches()["notch_deck_nx"]
-    over, under = _over_and_under("notch_deck")
-
-    half = CONN.fit_clearance / 2.0
-    assert px_lo[0] == pytest.approx(-half, abs=TOL)
-    assert nx_hi[0] == pytest.approx(+half, abs=TOL)
-    # between them they take the whole deck across that strip
-    assert under[0][2] < BODY.deck_bottom and over[1][2] > BODY.deck_top
-    assert under[1][2] >= over[0][2], (
-        "the notches must overlap in z, not merely touch")
+def test_every_seam_is_exactly_one_clearance_wide():
+    """Three of them: the centreline and the two column boundaries. Each is a
+    slot down the deck, and each runs along the direction of travel so a wheel
+    rolls parallel to it rather than across it."""
+    from trackcore.connector import deck_column
+    z = BODY.deck_bottom + 0.2
+    xs = np.linspace(-BODY.rail_inner, BODY.rail_inner, 40001)
+    step = float(xs[1] - xs[0])
+    # a seam is where *both* halves are cut away, so nothing is left there
+    gap = sum(step for x in xs
+              if _removed(float(x), z) and _removed(float(x), z + 1.0))
+    assert gap == pytest.approx(3.0 * CONN.fit_clearance, abs=3.0 * step)
+    assert deck_column(DEFAULT) > 2.0 * CONN.fit_clearance
 
 
 # -- 9.19 --------------------------------------------------------------------
@@ -219,50 +236,14 @@ def _overlap(a_lo, a_hi, b_lo, b_hi) -> float:
     return min(min(a_hi[i], b_hi[i]) - max(a_lo[i], b_lo[i]) for i in range(3))
 
 
-@pytest.mark.parametrize("prefix", ["notch_rail", "notch_deck"])
-def test_each_column_pair_is_a_point_reflection_about_its_own_split(prefix):
-    """This *is* the split, stated as a symmetry.
-
-    Genderless requires `P` odd in x. Within a column the split is a single
-    height, so oddness in x reads as a point reflection through `(0, split)`:
-    the +x notch maps onto the -x notch. A split uniform in z would satisfy
-    oddness in x too — and come apart upward — which is why the reflection is
-    about the split rather than merely in x.
-    """
-    split = RAIL_SPLIT if prefix == "notch_rail" else _deck_split()
-    px_lo, px_hi = _notches()[f"{prefix}_px"]
-    nx_lo, nx_hi = _notches()[f"{prefix}_nx"]
-
-    assert -px_hi[0] == pytest.approx(nx_lo[0], abs=1e-9)
-    assert -px_lo[0] == pytest.approx(nx_hi[0], abs=1e-9)
-    assert 2.0 * split - px_hi[2] == pytest.approx(nx_lo[2], abs=1e-9)
-    assert 2.0 * split - px_lo[2] == pytest.approx(nx_hi[2], abs=1e-9)
-
-    # y is deliberately *not* symmetric: a notch is cut one clearance deeper
-    # than the tab is long, so a tab never bottoms out before the joint closes
-    assert px_lo[1] == pytest.approx(nx_lo[1], abs=1e-12)
-    assert px_hi[1] - px_lo[1] > CONN.lap_length
-
-
-@pytest.mark.parametrize("prefix", ["notch_rail", "notch_deck"])
-def test_the_lap_faces_clear_each_other_by_exactly_one_clearance(prefix):
-    """We keep what is above our split, the mate what is below theirs, so the
-    two lap faces are exactly one clearance apart."""
-    over, under = _over_and_under(prefix)
-    assert under[1][2] - over[0][2] == pytest.approx(CONN.fit_clearance,
-                                                     abs=1e-12)
-
-
-def test_the_centreline_halves_clear_each_other_by_exactly_one_clearance():
-    """Each deck notch reaches half a clearance past x = 0, so the two surviving
-    halves are one clearance apart — the slot down the deck."""
-    ours = _notches()["notch_deck_nx"][1][0]
-    theirs = _notches()["notch_deck_px"][0][0]
-    assert ours - theirs == pytest.approx(CONN.fit_clearance, abs=1e-12)
-
-
-
-# -- 9.20 --------------------------------------------------------------------
+def test_the_lap_faces_clear_each_other_by_exactly_one_clearance():
+    """We keep what is above the split, the mate what is below it, so the two
+    lap faces are exactly one clearance apart."""
+    above = min(lo[2] for label, (lo, _hi) in _notches().items()
+                if lo[2] > SPLIT - 1.0 and lo[2] > BODY.deck_bottom)
+    below = max(hi[2] for _label, (_lo, hi) in _notches().items()
+                if hi[2] < SPLIT + 1.0)
+    assert below - above == pytest.approx(CONN.fit_clearance, abs=1e-12)
 
 
 def _yz(mesh):
@@ -284,38 +265,69 @@ def _span_at_z(poly, z: float):
     return (min(hits), max(hits)) if hits else None
 
 
+def _ribs():
+    return dict(additions(DEFAULT))
+
+
+def _grooves():
+    return {label: mesh for label, mesh in cuts(DEFAULT)
+            if label.startswith("groove")}
+
+
 def test_the_rib_seats_inside_the_partner_groove():
-    by_add = dict(additions(DEFAULT))
-    by_cut = dict(cuts(DEFAULT))
-    rib = _yz(by_add["rib_px"])
-    groove = [(-y, z) for (y, z) in _yz(by_cut["groove_nx"])]
+    """Every rib we present must land inside a groove the mate offers."""
+    face = SPLIT - CONN.fit_clearance / 2.0
+    apex = face + CONN.detent_height
+    assert apex > SPLIT + CONN.fit_clearance / 2.0, (
+        "the rib must reach past the partner's lap face")
 
-    face = -CONN.fit_clearance / 2.0
-    apex = CONN.fit_clearance / 2.0 - CONN.detent_height
-    assert apex < face, "the rib must reach past the partner's lap face"
-
-    for z in np.linspace(face, apex, 12)[1:]:
-        rib_span = _span_at_z(rib, float(z))
-        groove_span = _span_at_z(groove, float(z))
-        assert groove_span is not None
-        if rib_span is None:
-            continue
-        assert groove_span[0] <= rib_span[0] + TOL
-        assert groove_span[1] >= rib_span[1] - TOL
+    for label, rib_mesh in _ribs().items():
+        index = label.rsplit("_", 1)[1]
+        partner = _grooves()[f"groove_px_{index}"].transformed(MATE)
+        rib = _yz(rib_mesh)
+        groove = _yz(partner)
+        for z in np.linspace(face, apex, 12)[1:]:
+            rib_span = _span_at_z(rib, float(z))
+            if rib_span is None:
+                continue
+            groove_span = _span_at_z(groove, float(z))
+            assert groove_span is not None, f"{label} has no groove at z={z:.3f}"
+            assert groove_span[0] <= rib_span[0] + TOL
+            assert groove_span[1] >= rib_span[1] - TOL
 
 
 def test_no_rib_meets_a_rib():
-    """The longitudinal offset in §6.3 exists precisely to prevent this."""
-    by_name = dict(additions(DEFAULT))
-    ours = by_name["rib_px"].bounds()
-    theirs = by_name["rib_nx"].transformed(MATE).bounds()
-    assert _overlap(*ours, *theirs) <= TOL
+    """Ribs are all on one rail and grooves all on the other, so under MATE a
+    rib can only ever arrive opposite a groove. §6.3's longitudinal offset then
+    keeps our own rib clear of the one coming the other way."""
+    ours = [mesh.bounds() for mesh in _ribs().values()]
+    theirs = [mesh.transformed(MATE).bounds() for mesh in _ribs().values()]
+    for a in ours:
+        for b in theirs:
+            assert _overlap(*a, *b) <= TOL
+
+
+def test_a_rail_gets_two_detents_because_the_split_made_them_unlike():
+    """`Connector.detent_spacing`, and why it exists.
+
+    The split plane sits in the deck, so one rail keeps the thin sliver below
+    it and the other the tall part above. A groove can only be sunk into the
+    tall one, so ribs go on one rail and grooves on the other — half the
+    engagements of a joint that could put one of each on both. Two of each buys
+    them back.
+    """
+    assert len(_ribs()) == 2
+    assert len(_grooves()) == 2
+    assert len(CONN.detent_offsets) == 2
+    near, far = CONN.detent_offsets
+    assert near < CONN.detent_offset < far
+    assert far - near == pytest.approx(CONN.detent_spacing * CONN.lap_length)
 
 
 def test_the_return_face_is_steeper_than_the_lead_in():
     """Easy to push together, hard to pull apart, §6.3."""
-    rib = _yz(dict(additions(DEFAULT))["rib_px"])
-    apex = min(rib, key=lambda p: p[1])
+    rib = _yz(next(iter(_ribs().values())))
+    apex = max(rib, key=lambda p: p[1])
     base = [p for p in rib if p is not apex]
     lead = max(base, key=lambda p: p[0])[0] - apex[0]
     back = apex[0] - min(base, key=lambda p: p[0])[0]
@@ -325,9 +337,9 @@ def test_the_return_face_is_steeper_than_the_lead_in():
 def test_the_detent_base_is_buried_well_behind_the_lap_face():
     """Sunk only a hair, the flanks cross the lap plane beside the base corners
     and the boolean turns that into slivers on irrational port angles."""
-    rib = _yz(dict(additions(DEFAULT))["rib_px"])
-    base_z = max(z for _y, z in rib)
-    assert base_z - CONN.fit_clearance / 2.0 >= 0.1
+    rib = _yz(next(iter(_ribs().values())))
+    base_z = min(z for _y, z in rib)
+    assert (SPLIT - CONN.fit_clearance / 2.0) - base_z >= 0.1
 
 
 # -- 9.21 --------------------------------------------------------------------

@@ -2,39 +2,37 @@
 
 Pure Python + numpy. Never imports bpy.
 
-The port is the **four-column split** of §6.1. Read across the section there
-are four columns — outer rail, deck, deck, outer rail — and each is cut by a
-horizontal plane and keeps one side of it, alternating:
+The port is the **six-column split** of §6.1: two rails and four deck columns,
+cut by a single horizontal plane and each keeping one side of it.
 
-    ┌────────┬────────┬────────┬────────┐
-    │ notch  │  TAB   │ notch  │  TAB   │   above the split
-    ├────────┼────────┼────────┼────────┤   <- split
-    │  TAB   │ notch  │  TAB   │ notch  │   below the split
-    └────────┴────────┴────────┴────────┘
-      -x rail  -x deck  +x deck  +x rail
+    R1 rail | D1 deck | D2 deck | D3 deck | D4 deck | R2 rail
+    below   | below   | above   | below   | above   | above
 
-Four tabs, two reaching over their mate and two reaching under it. Genderless
-needs one thing only: that the pattern be **odd in x**, `P(-x, z) = -P(x, z)`,
-because two ports meet under `MATE`, a 180° turn about the shared up axis. The
-column signs above are odd, so the same part mates with itself.
+Genderless needs one thing only: that the pattern be **odd in x**,
+`P(-x, z) = -P(x, z)`, because two ports meet under `MATE`, a 180° turn about
+the shared up axis. The signs above are odd, so the same part mates with
+itself. It leaves four tabs — a rail always shares its handedness with the deck
+column it touches and joins onto it — two reaching over the mate and two under.
 
-The split height is **not one plane**. It is mid-height through the rail
-columns and mid-deck through the deck columns. A single flat plane at `z = 0`
-is what the first U-channel version used, and on a U the deck lies wholly below
-mid-height, so that plane never touched the deck at all: the only material
-lapping vertically was the two rail laps, a rail thickness wide apiece. Stepping
-the split into the deck laps half its thickness across nearly the whole channel
-instead — an order of magnitude more area, in both directions. That is what
-makes a bridge hold together rather than hinge apart.
+**The plane lies inside the deck**, at `deck_mid`, not at the section's
+mid-height. That is the whole design. A U-channel's deck sits wholly below
+mid-height, so a plane there never touches it: the deck halves end up side by
+side sharing nothing but a vertical face, and the only material lapping
+vertically is the two rail laps. That version was built and shipped. It mated
+cleanly, passed every rule in §7, and would have hinged apart under a car. In
+the deck, every column laps half the deck's thickness over its mate, across
+nearly the whole channel, in both directions.
 
-The price is a vertical mating face wherever the handedness changes, and four
-alternating columns means three of them across the section. Each costs a
-clearance-wide slot through the deck, running along the direction of travel for
-the length of the lap. There is no way round it, and it is why the split runs
-*along* the road rather than across it: a wheel rolls parallel to all three and
-never crosses one. The middle slot is the centreline, which was always there.
-See `root_inset` for where the other two sit, which is not where you would
-first put them.
+Handedness changes three times across the section, and each change costs a
+clearance-wide seam through the deck. All three fall in flat deck — at the
+centreline and at `±deck_column` — and **none at a rail root**, which is the one
+place a seam cannot go; see `deck_column`. They run *along* the direction of
+travel, so a wheel rolls parallel to all three and never crosses one.
+
+The two rails come out unlike: the plane is near the bottom of the section, so
+one rail keeps a thin sliver below it and the other the tall part above. That
+is why ribs go on one rail and grooves in the other, and why there are two of
+each; see `Connector.detent_spacing`.
 
 Everything here is expressed **once**, in a port's own frame, and transformed to
 wherever the port is. That is what makes a curve's angled end and a junction's
@@ -113,75 +111,46 @@ def _detent_polygon(config: TrackConfig, y_centre: float, z_face: float,
 def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     """Material added beyond the port plane: only the detent ribs.
 
-    The four tabs are not here because they are not added — see below.
+    The tabs are not here because they are not added — see below.
     """
     body, connector = config.body, config.connector
     hw, ri = body.half_width, body.rail_inner
     clear = connector.fit_clearance
-    zf = clear / 2.0          # lap plane offset
-    d, dh = connector.detent_offset, connector.detent_height
+    face = body.deck_mid - clear / 2.0     # top of the thin rail's lap
+    dh = connector.detent_height
 
+    # The **tabs are swept, not added** — every construction builds its body
+    # `lap_length` past the nominal port along the end tangent, and the notch
+    # cuts below trim that extension down to the six columns.
+    #
+    # They used to be boxes unioned on. At the port plane a box's side faces are
+    # exactly coplanar with the body's rail faces, and on a curve they are
+    # tangent there and diverge going in — a tangential union, which is the one
+    # thing an exact solver cannot resolve cleanly. Whether it survived was
+    # luck: a 45° arc built at an 8 mm lap and went non-manifold at 7, while a
+    # 90° arc of the same radius was fine at both. Sweeping the tab removes the
+    # second solid, so there is nothing to be tangent to.
+    #
+    # Ribs go on the **-x rail only**, the one this piece keeps below the split.
+    # Its mate presents its own tall +x rail there, with room for a groove. The
+    # +x rail carries the grooves instead; see `cuts`. That asymmetry is forced
+    # — see `Connector.detent_spacing` — and is why there are two of them.
     return [
-        # Only the detent ribs. The **tabs are swept, not added** — every
-        # construction builds its body `lap_length` past the nominal port along
-        # the end tangent, and the notch cuts below trim that extension down to
-        # the four tab columns.
-        #
-        # The ribs sit on the rail laps, which the four-column split left where
-        # they were. They are the joint's *click*; the deck columns are its
-        # strength. Putting a detent on the deck laps too is open — it is a lot
-        # of area going unused — but a rib on an internal horizontal face is a
-        # harder thing to print than one on a rail, and the click already works.
-        #
-        # They used to be boxes unioned on. At the port plane a box's side faces
-        # are exactly coplanar with the body's rail faces, and on a curve they
-        # are tangent there and diverge going in — a tangential union, which is
-        # the one thing an exact solver cannot resolve cleanly. Whether it
-        # survived was luck: a 45° arc built at an 8 mm lap and went
-        # non-manifold at 7, while a 90° arc of the same radius was fine at
-        # both. Sweeping the tab removes the second solid, so there is nothing
-        # to be tangent to.
-        ("rib_px", prism_yz(
-            _detent_polygon(config, +d, zf, -1, dh, 0.0, mirror=False),
-            ri + clear, hw)),
-        ("rib_nx", prism_yz(
-            _detent_polygon(config, +d, -zf, +1, dh, 0.0, mirror=False),
-            -hw, -ri - clear)),
+        (f"rib_nx_{index}", prism_yz(
+            _detent_polygon(config, offset, face, +1, dh, 0.0, mirror=False),
+            -hw, -ri - clear))
+        for index, offset in enumerate(connector.detent_offsets)
     ]
-
-
-def root_inset(config: TrackConfig = DEFAULT) -> float:
-    """How far inside the rail's inner face the column boundary sits, mm.
-
-    The obvious place to change handedness is exactly at the rail root, x =
-    rail_inner, since that is where the deck column stops being deck. It is the
-    one place it cannot go. The cut tools are straight boxes in the port frame
-    and the body is not: over a lap zone of reach `d` on a radius `R` the
-    section wanders sideways by about `d² / 2R`, which is more than the whole
-    width of the clearance slot. The rail's inner corner — a concave edge
-    running the length of the piece — then grazes the slot's face instead of
-    crossing it, and `curve_45` came apart into five non-manifold edges.
-
-    Set the boundary a clear drift inside the deck instead and the slot cuts
-    the deck square, top and bottom, whatever the curvature does. Sized for the
-    tightest legal radius, so it is curvature-proof rather than lucky.
-
-    The rail column then owns a strip of deck as well as its rail. That costs
-    nothing: the strip is below the rail's mid-height split, so it goes whole to
-    one piece rather than being lapped, exactly as it did before.
-    """
-    reach = config.connector.lap_length + config.connector.fit_clearance
-    drift = reach * reach / (2.0 * config.min_radius)
-    return drift + config.connector.fit_clearance
 
 
 def tab_area(config: TrackConfig = DEFAULT) -> float:
     """What one port carries across the port plane, mm².
 
-    Five pieces, not four, because the rail columns reach inboard of their
-    rails (see `root_inset`) and so one of them takes a strip of deck along
-    with it — whole, since that strip lies below the rail column's split. The
-    other rail column's strip goes to the mate.
+    Two tabs below the split — the -x rail with the deck column beside it, and
+    the third deck column — and two above: the second deck column, and the
+    fourth with the +x rail beside it. Every one of them is a deck lamina
+    thick, except the +x rail, which reaches from the split to the top of the
+    section.
 
     Ought to come to a little under half the section: half, less what every
     mating face gives up to clearance. `test_a_port_keeps_a_little_under_half`
@@ -190,13 +159,13 @@ def tab_area(config: TrackConfig = DEFAULT) -> float:
     """
     body, connector = config.body, config.connector
     half = connector.fit_clearance / 2.0
-    column = body.rail_inner - root_inset(config)
-    lamina = body.deck_lamina - half
+    q, lamina = deck_column(config), body.deck_lamina - half
+    rail, ri, hw = body.rail_thickness, body.rail_inner, body.half_width
 
-    rails = 2.0 * body.rail_thickness * (body.half_height - half)
-    decks = 2.0 * (column - 2.0 * half) * lamina
-    strip = (body.rail_inner - column - half) * body.deck_thickness
-    return rails + decks + strip
+    below = (hw - q - half) + (q - 2.0 * half)
+    above_deck = (q - 2.0 * half) + (q - half)
+    tall = body.half_height - body.deck_mid - half
+    return (below + above_deck) * lamina + rail * tall
 
 
 def outer_margin(config: TrackConfig = DEFAULT) -> float:
@@ -221,75 +190,101 @@ def outer_margin(config: TrackConfig = DEFAULT) -> float:
     return EPS + reach * reach / (2.0 * config.min_radius)
 
 
+def groove_depth(config: TrackConfig = DEFAULT) -> float:
+    """How far a groove is sunk below the lap face it opens onto, mm.
+
+    A groove has to swallow the mate's rib and no more. The rib's apex stands
+    `detent_height` proud of *its* lap face, and the two lap faces are one
+    clearance apart, so measured from this face the apex reaches
+    `detent_height - fit_clearance`. Half a clearance of margin on top of that
+    is `detent_height - fit_clearance/2`.
+
+    It used to be `detent_height + fit_clearance/2` — a full clearance deeper
+    than anything could ever reach into it. That was harmless while the groove
+    sat in the middle of a tall rail. It stopped being harmless when the split
+    moved into the deck: the groove now opens near the bottom of the rail, and
+    sunk that much deeper its apex climbed above the *deck surface*, where the
+    rail's inner face is no longer buried in deck but standing exposed a tenth
+    of a millimetre away. On a curve the body wanders further than that, the
+    two grazed, and every curve in the catalogue came out with a tunnel
+    through it.
+    """
+    return config.connector.detent_height - config.connector.fit_clearance / 2.0
+
+
+def deck_column(config: TrackConfig = DEFAULT) -> float:
+    """Width of one deck column, mm. The deck is divided into four.
+
+    The seams therefore fall at `0` and `±deck_column`, all of them in flat
+    deck. None falls at a rail root, which is the one place a seam cannot go:
+    the cut tools are straight boxes in the port frame while the body is not,
+    so over the lap zone a curve's section wanders sideways further than the
+    seam is wide, and a seam laid on the rail's concave inner corner *grazes*
+    it instead of crossing it. That is a tangential degeneracy, and it broke
+    `curve_45` into five non-manifold edges when the boundary was there.
+
+    Keeping the rails clear of it is not a dodge, it is the point: a rail
+    column is pure rail, and it shares its handedness with the deck column
+    beside it, so no seam is needed at that join at all.
+    """
+    return config.body.rail_inner / 2.0
+
+
 def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
-    """Material removed behind the port plane: notches, slot and grooves."""
+    """Material removed behind the port plane: notches, slots and grooves.
+
+    Six columns and one flat split plane at `deck_mid`. Reading across:
+
+        R1 rail | D1 deck | D2 deck | D3 deck | D4 deck | R2 rail
+        below   | below   | above   | below   | above   | above
+
+    Odd in x, so the same part mates with itself (§6.1). Handedness changes at
+    three places, all inside the deck — `±deck_column` and the centreline — and
+    at neither rail root, because each rail runs the same way as the deck
+    column it touches.
+    """
     body, connector = config.body, config.connector
-    hw, ri = body.half_width, body.rail_inner
-    hh = body.half_height
+    hw, ri, hh = body.half_width, body.rail_inner, body.half_height
     lap, clear = connector.lap_length, connector.fit_clearance
-    zf = clear / 2.0
-    xs = clear / 2.0
+    zf = xs = clear / 2.0
     back = -(lap + clear)     # notches are cut one clearance deeper than the tab
-    d = connector.detent_offset
-    depth = connector.detent_height + clear / 2.0
+    depth = groove_depth(config)
     grow = clear / 2.0
     out = outer_margin(config)
 
     md = body.deck_mid
     db, dt = body.deck_bottom, body.deck_top
-    col = ri - root_inset(config)      # deck | rail column boundary
+    q = deck_column(config)
 
+    # Each tool overshoots its seam by `xs` rather than stopping on it, so that
+    # consecutive tools overlap volumetrically instead of sharing a face. §7a
+    # requires it, and the reason is concrete: stopped flush, two of these left
+    # a zero-thickness sheet 6 mm long standing inside `curve_45`. Across each
+    # seam the pair between them removes every z, which is what opens the
+    # clearance slot there — so there are no separate slot tools.
     return [
-        # -- rail columns, split at mid-height ---------------------------------
-        # +x keeps what is above the lap plane, -x what is below. The column
-        # reaches inboard of the rail itself, so it takes the strip of deck
-        # between `col` and the rail root with it — see `root_inset`.
-        #
-        # It starts at `col - xs`, reaching right across the boundary slot
-        # below rather than stopping against it. Everything it takes in there
-        # the slot takes too, so the solid is the same either way — but tools
-        # that stop flush against each other share a face, and §7a is explicit
-        # that coincident faces are to be replaced by overlap wherever there is
-        # a choice. Stopped flush, this pair left a zero-thickness sheet 6 mm
-        # long standing in the middle of `curve_45`.
-        ("notch_rail_px", box((col - xs, back, -hh - EPS),
-                              (hw + out, lap + EPS, zf))),
-        ("notch_rail_nx", box((-hw - out, back, -zf),
-                              (-col + xs, lap + EPS, hh + EPS))),
+        # R1 + D1 keep what is below the split, so take everything above it
+        ("notch_lo_nx", box((-hw - out, back, md - zf),
+                            (-q + xs, lap + EPS, hh + EPS))),
+        # D2 keeps what is above
+        ("notch_hi_nx", box((-q - xs, back, db - EPS),
+                            (xs, lap + EPS, md + zf))),
+        # D3 keeps what is below
+        ("notch_lo_px", box((-xs, back, md - zf),
+                            (q + xs, lap + EPS, hh + EPS))),
+        # D4 + R2 keep what is above
+        ("notch_hi_px", box((q - xs, back, db - EPS),
+                            (hw + out, lap + EPS, md + zf))),
 
-        # -- deck columns, split at mid-deck, handedness reversed --------------
-        # Reversed so each *side* of the track carries one tab over and one
-        # under. Run them the same way as the rails and both of the joint's
-        # upward-facing laps end up on the same side, which resists lift on one
-        # rail and lets the other hinge.
-        #
-        # Each reaches one slot half-width past the centreline, so over
-        # |x| < xs the two overlap and between them take every z in the deck.
-        # That *is* the centreline slot of §6.2 — there is no separate tool for
-        # it. An earlier version had one, and being wholly contained in the
-        # union of these two it contributed nothing but coplanar faces; on the
-        # Y, whose port planes sit at irrational angles, the solver turned them
-        # into six degenerate triangles.
-        ("notch_deck_px", box((-xs, back, md - zf),
-                              (col + xs, lap + EPS, dt + EPS))),
-        ("notch_deck_nx", box((-col - xs, back, db - EPS),
-                              (xs, lap + EPS, md + zf))),
-
-        # -- the column boundaries ---------------------------------------------
-        # Handedness flips here, so the material on either side belongs to
-        # different pieces and needs clearance between them. Only through the
-        # deck: above it, inboard of the rails, there is nothing to cut.
-        ("boundary_px", box((col - xs, back, db - EPS),
-                            (col + xs, lap + EPS, dt + EPS))),
-        ("boundary_nx", box((-col - xs, back, db - EPS),
-                            (-col + xs, lap + EPS, dt + EPS))),
-        # detent grooves, the mirror of a rib grown by clearance
-        ("groove_px", prism_yz(
-            _detent_polygon(config, -d, zf, +1, depth, grow, mirror=True),
-            ri + clear - grow, hw + out)),
-        ("groove_nx", prism_yz(
-            _detent_polygon(config, -d, -zf, -1, depth, grow, mirror=True),
-            -hw - out, -ri - clear + grow)),
+        # Detent grooves, the mirror of a rib grown by clearance. They go in the
+        # +x rail, the tall one: this piece keeps it above the split, so there
+        # are four millimetres of material to sink a groove into. The mate's
+        # ribs arrive here. Our own ribs are on the -x rail — see `additions`.
+        *[(f"groove_px_{index}", prism_yz(
+            _detent_polygon(config, -offset, md + zf, +1, depth, grow,
+                            mirror=True),
+            ri + clear - grow, hw + out))
+          for index, offset in enumerate(connector.detent_offsets)],
     ]
 
 
@@ -299,9 +294,10 @@ def validate(config: TrackConfig = DEFAULT) -> None:
     connector.validate()
 
     clear = connector.fit_clearance
+    offsets = connector.detent_offsets
     lead = (connector.detent_height
             / math.tan(math.radians(connector.detent_lead_angle_deg)))
-    depth = connector.detent_height + clear / 2.0
+    depth = groove_depth(config)
     groove_lead = depth / math.tan(
         math.radians(connector.detent_lead_angle_deg)) + clear / 2.0
     groove_back = depth / math.tan(
@@ -309,14 +305,29 @@ def validate(config: TrackConfig = DEFAULT) -> None:
     rib_back = (connector.detent_height
                 / math.tan(math.radians(connector.detent_return_angle_deg)))
 
-    if connector.detent_offset + lead >= connector.lap_length:
+    if max(offsets) + lead >= connector.lap_length:
         raise ValueError("detent rib would overhang the end of the tab")
-    if connector.detent_offset + groove_lead >= connector.lap_length + clear:
+    if max(offsets) + groove_lead >= connector.lap_length + clear:
         raise ValueError("detent groove would run past the back of the notch")
-    if groove_back >= connector.detent_offset - rib_back:
+    if groove_back >= min(offsets) - rib_back:
         raise ValueError("detent rib and groove would run into each other")
-    if clear / 2.0 + depth >= body.half_height:
-        raise ValueError("detent groove would cut through the rail")
+    if len(offsets) > 1 and min(
+            b - a for a, b in zip(offsets, offsets[1:])) <= lead + rib_back:
+        raise ValueError(
+            "a rail's two detents would run into each other; "
+            "detent_spacing is too small for this detent_height"
+        )
+    if depth <= 0.0:
+        raise ValueError(
+            "detent is shallower than half a clearance; there would be nothing "
+            "for a groove to hold on to"
+        )
+    if body.deck_mid + clear / 2.0 + depth >= body.deck_top:
+        raise ValueError(
+            "the detent groove would break out above the deck surface, where "
+            "the rail's inner face stands exposed; on a curve the body wanders "
+            "further than the groove clears that face and the two graze"
+        )
     if clear >= body.rail_inner:
         raise ValueError("centreline slot is wider than the deck")
     if clear / 2.0 >= body.deck_lamina:
@@ -324,11 +335,10 @@ def validate(config: TrackConfig = DEFAULT) -> None:
             "the lap plane's clearance is as thick as the deck lamina it "
             "splits; the deck would part instead of lapping"
         )
-    column = body.rail_inner - root_inset(config)
-    if column <= 2.0 * clear:
+    if deck_column(config) <= 2.0 * clear:
         raise ValueError(
-            f"the deck column is {column:.3f} mm wide; the centreline slot and "
-            f"the column boundary would meet and the deck would carry no lap"
+            f"a deck column is {deck_column(config):.3f} mm wide; the seams "
+            f"either side of it would meet and it would carry no lap"
         )
     if connector.lap_length + clear >= body.width_outer:
         raise ValueError("lap is longer than the piece is wide; joints would "

@@ -42,7 +42,7 @@ from trackcore.validate import signed_volume  # noqa: E402
 
 
 def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
-              samples: int = 9):
+              samples: int = 15):
     """Do the two tabs actually interleave, or do the pieces merely touch?
 
     "Shared volume 0" is necessary and nowhere near sufficient: two pieces held
@@ -61,14 +61,14 @@ def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
     origin = np.asarray(frame)[:3, 3]
     axis = np.asarray(frame)[:3, 1]
     lap = config.connector.lap_length
-    detent = config.connector.detent_offset
+    detents = config.connector.detent_offsets
 
     readings = []
     for t in np.linspace(-lap + 0.4, lap - 0.4, samples):
-        # skip the detent: there the rib adds to one piece and the groove that
+        # skip the detents: there the rib adds to one piece and the groove that
         # receives it takes rather more from the other, by design, so the two
         # do not sum to the section there and it proves nothing either way.
-        if abs(abs(float(t)) - detent) < 0.8:
+        if any(abs(abs(float(t)) - d) < 0.9 for d in detents):
             continue
         point = origin + axis * float(t)
         readings.append((

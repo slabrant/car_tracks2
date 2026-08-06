@@ -165,24 +165,25 @@ a name, this table wins.
 | **body** | everything between the two lap zones |
 
 **At a port** — the joint. Looking at the port face, the section is read as
-**four columns** — rail, deck, deck, rail — each cut by a horizontal plane, each
-keeping the opposite side of it from its neighbour:
+**six columns** — two rails and four deck — cut by a single horizontal plane
+lying inside the deck, each column keeping one side of it:
 
 ```
-        PORT FACE                          SIDE VIEW of one rail
-
-  ┌──────┬──────┬──────┬──────┐        ────────────────┐
-  │notch │ TAB  │notch │ TAB  │        piece A, upper  │  ◄── tab
-  ├──────┼──────┼──────┼──────┤ split  ────────────────┼──────── lap plane
-  │ TAB  │notch │ TAB  │notch │                        │ piece B, lower
-  └──────┴──────┴──────┴──────┘        ────────────────┘
-   -x     -x     +x     +x             |◄─ notch ─►|◄─ tab ─►|
-   rail   deck   deck   rail
+  ┌────┬─────────┬─────────┬─────────┬─────────┬────┐
+  │    │         │   TAB   │         │   TAB   │TAB │  above the split
+  │    │         ├─────────┤         ├─────────┤    │
+  │TAB │   TAB   │         │   TAB   │         │    │  below the split
+  └────┴─────────┴─────────┴─────────┴─────────┴────┘
+   rail   deck      deck       deck      deck   rail
+        |         ^         ^         ^        |
+        |         '-- the three seams, all in flat deck
+        '-- no seam here: the rail runs the same way as the deck beside it
 ```
 
-Four tabs: two reaching over the mate, two reaching under it. The split is at
-**mid-height** through the rail columns and **mid-deck** through the deck
-columns — see §6.2 for why it steps, and what it cost to learn.
+Four tabs, because a rail always runs the same way as the deck column beside it
+and joins onto it: two reach over the mate, two reach under. The pattern is odd
+in x, which is all that genderlessness requires. See §6.1 for why the plane is
+in the deck and §6.2 for where the seams fall.
 
 | term | meaning |
 |---|---|
@@ -769,7 +770,7 @@ h(x) = deck_mid      through the deck columns
 Four columns, alternating sign, gives four tabs: two over, two under. The deck
 now laps half its thickness across nearly the whole channel, in both directions.
 
-### 6.2 Geometry — the four-column lap
+### 6.2 Geometry — the six-column lap
 
 Nominal port plane at `y = 0`, body at `y < 0`, `lap_length = L`.
 
@@ -798,14 +799,16 @@ PORT FACE, looking down the track       SIDE VIEW of the +X rail at a joint
 **Where the columns divide.** Not at the rail root, which is the obvious place
 and the one place it cannot go: the cut tools are straight boxes in the port
 frame while the body is not, so over the lap zone a curve's section wanders
-sideways by about `(L + fit_clearance)² / 2·min_radius` — further than the slot
-is wide. A slot placed on the rail's inner corner then *grazes* that corner
-instead of crossing it, which is a tangential degeneracy, and `curve_45` came
-apart into five non-manifold edges. `connector.root_inset` sets the boundary a
-full drift inside the deck, where the slot cuts flat material square. The rail
-column therefore owns a strip of deck as well as its rail; that strip lies below
-the rail column's split, so it goes whole to one piece, exactly as it did
-before.
+sideways by about `(L + fit_clearance)² / 2·min_radius` — further than a seam is
+wide. A seam laid on the rail's concave inner corner then *grazes* it instead of
+crossing it, which is a tangential degeneracy, and `curve_45` came apart into
+five non-manifold edges when a boundary was there.
+
+So a rail column takes the same side of the split as the deck column beside it.
+No clearance is needed between them, no seam is cut, and the rail carries no
+deck. The three seams that remain fall at `x = 0` and `x = ±deck_column`, in
+flat deck, where a straight cut crosses the material square whatever the
+curvature does.
 
 Three clearances, all `fit_clearance`:
 
@@ -816,7 +819,7 @@ Three clearances, all `fit_clearance`:
 - **Lateral**, wherever the handedness changes. Four alternating columns means
   three such places across the section, and each becomes a slot one clearance
   wide through the deck, running the length of the lap. The middle one is the
-  centreline; the outer two are at `rail_inner − root_inset`. They run **along**
+  centreline; the other two are at `±deck_column`. They run **along**
   the direction of travel, so a wheel rolls parallel to all three and never
   crosses one — which is the whole reason the columns are columns and not rows.
 

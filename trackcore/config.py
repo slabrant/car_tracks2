@@ -57,14 +57,18 @@ class Body:
 
     @property
     def deck_mid(self) -> float:
-        """Mid-thickness of the deck, where the joint splits it.
+        """Mid-thickness of the deck. **The joint's split plane** (§6.2).
 
-        The connector's split is **stepped**, not flat (§6.2): mid-height
-        through the rails, mid-deck through the deck. A flat split at `z = 0`
-        misses the deck entirely on a U-channel, because the deck is wholly
-        below mid-height — which leaves the two thin rail laps as the only
-        thing resisting a vertical load, and that is a joint no bridge
-        survives.
+        One flat plane, and it sits here rather than at the section's
+        mid-height. On a U-channel the deck lies wholly below mid-height, so a
+        plane there never touches it: the deck halves end up side by side
+        sharing nothing but a vertical face, leaving the two thin rail laps as
+        the only thing resisting a vertical load. That is a joint no bridge
+        survives, and it was built before it was caught.
+
+        Splitting here costs the rails their symmetry — one keeps a thin sliver
+        and the other the tall part — which is what `Connector.detent_spacing`
+        is about.
         """
         return (self.deck_bottom + self.deck_top) / 2.0
 
@@ -91,10 +95,11 @@ class Body:
             raise ValueError("rails too thick for the track width")
         if self.deck_thickness >= self.rail_height_total:
             raise ValueError("deck must be thinner than the rail height")
-        if self.deck_top >= 0.0:
+        if self.deck_thickness >= self.rail_height_total / 2.0:
             raise ValueError(
-                "the deck must sit wholly below the section mid-height, so that "
-                "the rail columns of the joint split clear of it (§6.2)"
+                "the deck is half the section or more; the joint splits at its "
+                "mid-thickness and the rail above that split would be thinner "
+                "than the deck lamina it has to hold (§6.2)"
             )
 
 
@@ -129,6 +134,33 @@ class Connector:
     detent_lead_angle_deg: float = 30.0
     detent_return_angle_deg: float = 60.0
 
+    detent_spacing: float = 0.4
+    """Gap between a rail's two detents, as a fraction of the lap.
+
+    There are two per rail because the six-column split (§6.1) leaves the two
+    rails **unlike**: the split plane sits in the deck, so one rail keeps the
+    thin sliver below it and the other keeps the tall part above. A groove has
+    to be cut into the material that receives it, and it can only be cut into
+    the tall one — sunk into the thin sliver it would leave a quarter of a
+    millimetre of floor.
+
+    So each port carries its ribs on one rail and its grooves on the other,
+    where a split clear of the rails could put one of each on both. That is
+    half the engagements, and this is what buys them back: two ribs and two grooves,
+    straddling `detent_offset`. Retention is unchanged; what changed is that
+    every groove is now in 4 mm of material rather than 0.7.
+
+    Set to 0 for a single detent per rail, which is the older, weaker joint.
+    """
+
+    @property
+    def detent_offsets(self) -> tuple[float, ...]:
+        """Where along the lap the detents sit, near end first."""
+        if self.detent_spacing <= 0.0:
+            return (self.detent_offset,)
+        half = self.detent_spacing * self.lap_length / 2.0
+        return (self.detent_offset - half, self.detent_offset + half)
+
     def validate(self) -> None:
         for name in ("lap_length", "fit_clearance", "detent_offset",
                      "detent_height"):
@@ -138,6 +170,13 @@ class Connector:
             raise ValueError(
                 "lead-in must be shallower than the return face, or the joint "
                 "is as hard to assemble as it is to pull apart"
+            )
+        if self.detent_spacing < 0.0:
+            raise ValueError("detent_spacing must not be negative")
+        if min(self.detent_offsets) <= 0.0:
+            raise ValueError(
+                "the near detent would sit behind the port plane; "
+                "detent_spacing is too wide for detent_offset"
             )
 
 
