@@ -166,24 +166,25 @@ a name, this table wins.
 
 **At a port** — the joint. Looking at the port face, the section is read as
 **six columns** — two rails and four deck — cut by a single horizontal plane
-lying inside the deck, each column keeping one side of it:
+lying inside the deck, each column keeping the opposite side from its
+neighbour:
 
 ```
-  ┌────┬─────────┬─────────┬─────────┬─────────┬────┐
-  │    │         │   TAB   │         │   TAB   │TAB │  above the split
-  │    │         ├─────────┤         ├─────────┤    │
-  │TAB │   TAB   │         │   TAB   │         │    │  below the split
-  └────┴─────────┴─────────┴─────────┴─────────┴────┘
-   rail   deck      deck       deck      deck   rail
-        |         ^         ^         ^        |
-        |         '-- the three seams, all in flat deck
-        '-- no seam here: the rail runs the same way as the deck beside it
+  ┌─────┬────────┬────────┬────────┬────────┬─────┐
+  │ TAB │        │  TAB   │        │  TAB   │     │   above the split
+  ├─────┤        ├────────┤        ├────────┤     │
+  │     │  TAB   │        │  TAB   │        │ TAB │   below the split
+  └─────┴────────┴────────┴────────┴────────┴─────┘
+   rail    deck     deck     deck     deck    rail
+
+   up      down     up       down     up      down
 ```
 
-Four tabs, because a rail always runs the same way as the deck column beside it
-and joins onto it: two reach over the mate, two reach under. The pattern is odd
-in x, which is all that genderlessness requires. See §6.1 for why the plane is
-in the deck and §6.2 for where the seams fall.
+Six tabs, alternating the whole way across, so the two pieces interleave in
+narrow fingers and the vertical restraint is spread evenly over the width rather
+than bunched at either side. The pattern is odd in x, which is the whole of what
+genderlessness needs: reflect it and every tab becomes a notch. See §6.1 for why the plane
+is in the deck, and §6.2 for where the seams fall.
 
 | term | meaning |
 |---|---|
@@ -796,19 +797,21 @@ PORT FACE, looking down the track       SIDE VIEW of the +X rail at a joint
   from its neighbour
 ```
 
-**Where the columns divide.** Not at the rail root, which is the obvious place
-and the one place it cannot go: the cut tools are straight boxes in the port
-frame while the body is not, so over the lap zone a curve's section wanders
-sideways by about `(L + fit_clearance)² / 2·min_radius` — further than a seam is
-wide. A seam laid on the rail's concave inner corner then *grazes* it instead of
-crossing it, which is a tangential degeneracy, and `curve_45` came apart into
-five non-manifold edges when a boundary was there.
+**Where the columns divide.** The four inner seams fall in flat deck and give no
+trouble. The outer two want to sit at the rail root, where the rail stops being
+rail, and that is the one place they cannot go: the cut tools are straight boxes
+in the port frame while the body is not, so over the lap zone a curve's section
+wanders sideways by about `(L + fit_clearance)² / 2·min_radius` — further than a
+seam is wide. A seam laid on the rail's concave inner corner then *grazes* it
+instead of crossing it, which is a tangential degeneracy, and `curve_45` came
+apart into five non-manifold edges when a boundary was there.
 
-So a rail column takes the same side of the split as the deck column beside it.
-No clearance is needed between them, no seam is cut, and the rail carries no
-deck. The three seams that remain fall at `x = 0` and `x = ±deck_column`, in
-flat deck, where a straight cut crosses the material square whatever the
-curvature does.
+`connector.root_inset` sets them a full drift inside the deck instead, sized for
+the tightest legal radius so it is curvature-proof rather than lucky. The
+outermost column therefore carries a strip of deck along with its rail. Because
+the split is a single flat plane, that strip is split at `deck_mid` like the
+rest of the deck and is still lapped — the road is the same everywhere, and only
+the seam has moved.
 
 Three clearances, all `fit_clearance`:
 
@@ -816,12 +819,12 @@ Three clearances, all `fit_clearance`:
   the mating lower half stops at `−fit_clearance/2`.
 - **Longitudinal**, at the tab tips. Notches are cut `L + fit_clearance` deep so
   a tab never bottoms out.
-- **Lateral**, wherever the handedness changes. Four alternating columns means
-  three such places across the section, and each becomes a slot one clearance
+- **Lateral**, wherever the handedness changes. Six alternating columns means
+  five such places across the section, and each becomes a slot one clearance
   wide through the deck, running the length of the lap. The middle one is the
-  centreline; the other two are at `±deck_column`. They run **along**
-  the direction of travel, so a wheel rolls parallel to all three and never
-  crosses one — which is the whole reason the columns are columns and not rows.
+  centreline. They run **along** the direction of travel, so a wheel rolls
+  parallel to all five and never crosses one — which is the whole reason the
+  columns are columns and not rows.
 
 Note what this buys structurally, and what the version before it did not. The
 material lapping vertically is now both deck columns plus both rails, in both

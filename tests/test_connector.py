@@ -54,6 +54,12 @@ SPLIT = BODY.deck_mid
 """One flat plane, and it lies inside the deck. §6.1."""
 
 
+def _seams():
+    """Every x where the handedness changes, and so a clearance slot opens."""
+    from trackcore.connector import columns
+    return [hi for hi, *_ in [(c[1],) for c in columns(DEFAULT)]][:-1]
+
+
 def _removed(x: float, z: float, y: float = 1.0) -> bool:
     """Is this point of the port face cut away? The tabs are the complement."""
     for _label, (lo, hi) in _notches().items():
@@ -73,11 +79,8 @@ def _in_section(x: float, z: float) -> bool:
 def _sample_points(margin: float = 0.25):
     """Section points well clear of every clearance band, so a hit or a miss
     is about the design and not about which side of a 0.15 mm slot we landed."""
-    from trackcore.connector import deck_column
-    q = deck_column(DEFAULT)
-    seams = (0.0, q, -q)
     for x in np.linspace(-BODY.half_width + 0.05, BODY.half_width - 0.05, 181):
-        if any(abs(abs(x) - abs(s)) < margin for s in seams):
+        if any(abs(x - s) < margin for s in _seams()):
             continue
         for z in np.linspace(BODY.deck_bottom + 0.05, BODY.half_height - 0.05, 61):
             if abs(z - SPLIT) < margin or not _in_section(float(x), float(z)):
@@ -111,18 +114,21 @@ def test_the_port_is_genderless():
     assert checked > 2000, "not enough of the section was sampled"
 
 
-def test_there_are_six_columns_two_rails_and_four_decks():
-    """§6.1. The rails carry no deck and the deck is quartered."""
-    from trackcore.connector import deck_column
-    q = deck_column(DEFAULT)
-    assert q == pytest.approx(BODY.rail_inner / 2.0)
+def test_the_six_columns_alternate_all_the_way_across():
+    """§6.1. Up, down, up, down, up, down — so the two pieces interleave in six
+    narrow fingers and the vertical restraint is spread across the width
+    instead of bunched at either side."""
+    from trackcore.connector import columns
+    sides = [keeps_above for _lo, _hi, keeps_above in columns(DEFAULT)]
+    assert len(sides) == 6
+    assert all(a != b for a, b in zip(sides, sides[1:])), sides
 
-    # walk the section at deck height and count the changes of handedness
+    # and the same read off the geometry rather than the model
     z = BODY.deck_bottom + 0.2
-    xs = np.linspace(-BODY.rail_inner + 0.05, BODY.rail_inner - 0.05, 2001)
+    xs = np.linspace(-BODY.half_width + 0.05, BODY.half_width - 0.05, 4001)
     states = [_removed(float(x), z) for x in xs]
-    seams = sum(1 for a, b in zip(states, states[1:]) if a != b)
-    assert seams == 3, f"expected 3 seams across the deck, saw {seams}"
+    changes = sum(1 for a, b in zip(states, states[1:]) if a != b)
+    assert changes == 5, f"expected 5 seams across the section, saw {changes}"
 
 
 def test_a_rail_column_carries_no_deck():
@@ -158,8 +164,7 @@ def test_the_split_lies_inside_the_deck_so_the_deck_laps():
     z_lo, z_hi = SPLIT - 0.2, SPLIT + 0.2
     for x in np.linspace(-BODY.rail_inner + 0.4, BODY.rail_inner - 0.4, 97):
         x = float(x)
-        if any(abs(abs(x) - abs(s)) < 0.3
-               for s in (0.0, BODY.rail_inner / 2.0)):
+        if any(abs(x - s) < 0.3 for s in _seams()):
             continue
         assert _removed(x, z_lo) != _removed(x, z_hi), (
             f"at x={x:.2f} the deck is not lapped: the same piece keeps both "
@@ -210,9 +215,9 @@ def test_every_cut_is_taken_one_clearance_deeper_than_the_tab_is_long():
 
 
 def test_every_seam_is_exactly_one_clearance_wide():
-    """Three of them: the centreline and the two column boundaries. Each is a
-    slot down the deck, and each runs along the direction of travel so a wheel
-    rolls parallel to it rather than across it."""
+    """One wherever the handedness changes. Each is a slot down the deck, and
+    each runs along the direction of travel so a wheel rolls parallel to it
+    rather than across it."""
     from trackcore.connector import deck_column
     z = BODY.deck_bottom + 0.2
     xs = np.linspace(-BODY.rail_inner, BODY.rail_inner, 40001)
@@ -220,7 +225,8 @@ def test_every_seam_is_exactly_one_clearance_wide():
     # a seam is where *both* halves are cut away, so nothing is left there
     gap = sum(step for x in xs
               if _removed(float(x), z) and _removed(float(x), z + 1.0))
-    assert gap == pytest.approx(3.0 * CONN.fit_clearance, abs=3.0 * step)
+    assert gap == pytest.approx(len(_seams()) * CONN.fit_clearance,
+                                abs=6.0 * step)
     assert deck_column(DEFAULT) > 2.0 * CONN.fit_clearance
 
 
@@ -283,7 +289,7 @@ def test_the_rib_seats_inside_the_partner_groove():
 
     for label, rib_mesh in _ribs().items():
         index = label.rsplit("_", 1)[1]
-        partner = _grooves()[f"groove_px_{index}"].transformed(MATE)
+        partner = _grooves()[f"groove_nx_{index}"].transformed(MATE)
         rib = _yz(rib_mesh)
         groove = _yz(partner)
         for z in np.linspace(face, apex, 12)[1:]:

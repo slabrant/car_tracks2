@@ -47,28 +47,29 @@ junction and sweep terms too, is `docs/SPEC.md` §1.1.
 
 **At a port** — the joint. The section reads as six columns — two rails and
 four deck — split by one horizontal plane that lies **inside the deck**. Each
-column keeps the opposite side from its neighbour.
+column keeps the opposite side from its neighbour, so they alternate all the
+way across.
 
 ```
-  ┌────┬─────────┬─────────┬─────────┬─────────┬────┐
-  │    │         │   TAB   │         │   TAB   │TAB │  above the split
-  │    │         ├─────────┤         ├─────────┤    │
-  │TAB │   TAB   │         │   TAB   │         │    │  below the split
-  └────┴─────────┴─────────┴─────────┴─────────┴────┘
-   rail   deck      deck       deck      deck   rail
-        |         ^         ^         ^        |
-        |         '-- the three seams, all in flat deck
-        '-- no seam here: the rail runs the same way as the deck beside it
+  ┌─────┬────────┬────────┬────────┬────────┬─────┐
+  │ TAB │        │  TAB   │        │  TAB   │     │   above the split
+  ├─────┤        ├────────┤        ├────────┤     │
+  │     │  TAB   │        │  TAB   │        │ TAB │   below the split
+  └─────┴────────┴────────┴────────┴────────┴─────┘
+   rail    deck     deck     deck     deck    rail
+
+   up      down     up       down     up      down
 ```
 
-Four tabs: two reach over the mate, two under. A rail carries no deck — it runs
-the same way as the deck column beside it, so there is no seam at the rail root
-and none where a wheel runs closest to the rail.
+Six tabs, alternating the whole way across, so the two pieces interleave in
+narrow fingers and the vertical restraint is spread evenly over the width rather
+than bunched at either side. The pattern is odd in x, which is the whole of what
+genderlessness needs: reflect it and every tab becomes a notch.
 
-The plane being in the deck is the whole point. Split at mid-height instead and
-it misses the deck entirely, leaving two thin rail laps to resist a vertical
-load; in the deck, each column laps half the deck's thickness over its mate,
-right across the road.
+The plane being in the deck is the point. Split at mid-height instead and it
+misses the deck entirely, leaving two thin rail laps to resist a vertical load;
+in the deck, every column laps half the deck's thickness over its mate, right
+across the road.
 
 - **tab** — runs past the port plane, into the mate
 - **notch** — cut back, to receive the mate's tab

@@ -6,13 +6,14 @@ The port is the **six-column split** of §6.1: two rails and four deck columns,
 cut by a single horizontal plane and each keeping one side of it.
 
     R1 rail | D1 deck | D2 deck | D3 deck | D4 deck | R2 rail
-    below   | below   | above   | below   | above   | above
+    above   | below   | above   | below   | above   | below
 
 Genderless needs one thing only: that the pattern be **odd in x**,
 `P(-x, z) = -P(x, z)`, because two ports meet under `MATE`, a 180° turn about
 the shared up axis. The signs above are odd, so the same part mates with
-itself. It leaves four tabs — a rail always shares its handedness with the deck
-column it touches and joins onto it — two reaching over the mate and two under.
+itself. Alternating the whole way across leaves six narrow fingers rather than
+a few wide ones, which spreads the vertical restraint evenly over the width
+instead of bunching it at either side.
 
 **The plane lies inside the deck**, at `deck_mid`, not at the section's
 mid-height. That is the whole design. A U-channel's deck sits wholly below
@@ -23,11 +24,12 @@ cleanly, passed every rule in §7, and would have hinged apart under a car. In
 the deck, every column laps half the deck's thickness over its mate, across
 nearly the whole channel, in both directions.
 
-Handedness changes three times across the section, and each change costs a
-clearance-wide seam through the deck. All three fall in flat deck — at the
-centreline and at `±deck_column` — and **none at a rail root**, which is the one
-place a seam cannot go; see `deck_column`. They run *along* the direction of
-travel, so a wheel rolls parallel to all three and never crosses one.
+Handedness changes at every boundary, and each change costs a clearance-wide
+seam through the deck — five of them. All five fall in flat deck, and **none at
+a rail root**, which is the one place a seam cannot go; the outermost pair sits
+a curvature drift inside it instead, see `root_inset`. They run *along* the
+direction of travel, so a wheel rolls parallel to all five and never crosses
+one.
 
 The two rails come out unlike: the plane is near the bottom of the section, so
 one rail keeps a thin sliver below it and the other the tall part above. That
@@ -131,14 +133,29 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
     # 90° arc of the same radius was fine at both. Sweeping the tab removes the
     # second solid, so there is nothing to be tangent to.
     #
-    # Ribs go on the **-x rail only**, the one this piece keeps below the split.
-    # Its mate presents its own tall +x rail there, with room for a groove. The
-    # +x rail carries the grooves instead; see `cuts`. That asymmetry is forced
+    # Ribs go on the **+x rail only**, the one this piece keeps below the split.
+    # Its mate presents its own tall rail there, with room for a groove. The -x
+    # rail carries the grooves instead; see `cuts`. That asymmetry is forced
     # — see `Connector.detent_spacing` — and is why there are two of them.
+    #
+    # A rib runs a hair *past* the rail's outer face rather than stopping flush
+    # on it. Flush, the two faces are exactly coplanar, and a coplanar face
+    # between a union tool and its target is the one thing an exact solver
+    # cannot be relied on to resolve — the same tangency that made the old
+    # glued-on tabs unbuildable. It held for a long time and then `y_rounded`,
+    # whose port planes sit at irrational angles, produced four non-manifold
+    # edges along exactly that line.
+    #
+    # Overshooting is §7a's standing remedy, and the alternative was worse:
+    # pulled *inside* the rail instead, the rib leaves a ribbon of lap plane
+    # outboard of it whose inner boundary carries three collinear corners, and
+    # the STL writer fans a triangle of exactly zero area through them. The
+    # overshoot leaves a ledge one hundredth of a millimetre proud on the
+    # outside of the rail, where nothing mates and no printer can express it.
     return [
-        (f"rib_nx_{index}", prism_yz(
+        (f"rib_px_{index}", prism_yz(
             _detent_polygon(config, offset, face, +1, dh, 0.0, mirror=False),
-            -hw, -ri - clear))
+            ri + clear, hw + EPS))
         for index, offset in enumerate(connector.detent_offsets)
     ]
 
@@ -146,26 +163,33 @@ def additions(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
 def tab_area(config: TrackConfig = DEFAULT) -> float:
     """What one port carries across the port plane, mm².
 
-    Two tabs below the split — the -x rail with the deck column beside it, and
-    the third deck column — and two above: the second deck column, and the
-    fourth with the +x rail beside it. Every one of them is a deck lamina
-    thick, except the +x rail, which reaches from the split to the top of the
-    section.
+    Summed over the six columns: each keeps one side of the split, less half a
+    clearance off every face it mates on. Only the outermost columns contain
+    rail, and there the material runs the full height of the section rather
+    than stopping at the deck surface.
 
-    Ought to come to a little under half the section: half, less what every
-    mating face gives up to clearance. `test_a_port_keeps_a_little_under_half`
-    checks exactly that, which is what makes this derivation and the section
-    check each other rather than merely agree.
+    Ought to come to a little under half the section, and
+    `test_a_port_keeps_a_little_under_half` checks exactly that — which is what
+    makes this derivation and the section measurement check each other rather
+    than merely agree.
     """
-    body, connector = config.body, config.connector
-    half = connector.fit_clearance / 2.0
-    q, lamina = deck_column(config), body.deck_lamina - half
-    rail, ri, hw = body.rail_thickness, body.rail_inner, body.half_width
+    body = config.body
+    half = config.connector.fit_clearance / 2.0
+    md, ri = body.deck_mid, body.rail_inner
 
-    below = (hw - q - half) + (q - 2.0 * half)
-    above_deck = (q - 2.0 * half) + (q - half)
-    tall = body.half_height - body.deck_mid - half
-    return (below + above_deck) * lamina + rail * tall
+    total = 0.0
+    for x_lo, x_hi, keeps_above in columns(config):
+        lo = x_lo + (half if x_lo > -body.half_width else 0.0)
+        hi = x_hi - (half if x_hi < body.half_width else 0.0)
+        for a, b, top in ((lo, min(hi, -ri), body.half_height),
+                          (max(lo, -ri), min(hi, ri), body.deck_top),
+                          (max(lo, ri), hi, body.half_height)):
+            if b <= a:
+                continue
+            height = (top - md - half) if keeps_above else (md - half
+                                                            - body.deck_bottom)
+            total += (b - a) * height
+    return total
 
 
 def outer_margin(config: TrackConfig = DEFAULT) -> float:
@@ -212,80 +236,107 @@ def groove_depth(config: TrackConfig = DEFAULT) -> float:
     return config.connector.detent_height - config.connector.fit_clearance / 2.0
 
 
-def deck_column(config: TrackConfig = DEFAULT) -> float:
-    """Width of one deck column, mm. The deck is divided into four.
+def root_inset(config: TrackConfig = DEFAULT) -> float:
+    """How far inside the rail's inner face the outermost seam sits, mm.
 
-    The seams therefore fall at `0` and `±deck_column`, all of them in flat
-    deck. None falls at a rail root, which is the one place a seam cannot go:
-    the cut tools are straight boxes in the port frame while the body is not,
-    so over the lap zone a curve's section wanders sideways further than the
-    seam is wide, and a seam laid on the rail's concave inner corner *grazes*
-    it instead of crossing it. That is a tangential degeneracy, and it broke
-    `curve_45` into five non-manifold edges when the boundary was there.
+    The seam belongs at the rail root, where the rail stops being rail. It is
+    the one place it cannot go. The cut tools are straight boxes in the port
+    frame and the body is not: over a lap zone of reach `d` on a radius `R` the
+    section wanders sideways by about `d² / 2R`, far more than a seam is wide.
+    The rail's concave inner corner — an edge running the whole length of the
+    piece — then drifts out of the cut and *grazes* its face instead of being
+    crossed by it, which is a tangential degeneracy and exactly what an exact
+    solver cannot resolve. `curve_45` came apart into five non-manifold edges.
 
-    Keeping the rails clear of it is not a dodge, it is the point: a rail
-    column is pure rail, and it shares its handedness with the deck column
-    beside it, so no seam is needed at that join at all.
+    Set the seam a full drift inside the deck and it cuts flat material square
+    whatever the curvature does. Sized for the tightest legal radius, so it is
+    curvature-proof rather than lucky.
+
+    The outermost column therefore carries a strip of deck as well as its rail.
+    With the split a single flat plane (§6.1) that costs nothing: the strip is
+    split at `deck_mid` like the rest of the deck, so it is still lapped, and
+    the road is the same everywhere. Under the *stepped* split this was a real
+    concession — the strip went whole to one piece — and it is why that version
+    tried to avoid the seam rather than place it well.
     """
-    return config.body.rail_inner / 2.0
+    reach = config.connector.lap_length + config.connector.fit_clearance
+    drift = reach * reach / (2.0 * config.min_radius)
+    return drift + config.connector.fit_clearance
+
+
+def deck_column(config: TrackConfig = DEFAULT) -> float:
+    """Width of one of the four middle columns, mm.
+
+    They divide what is left between the two outermost seams, which sit at
+    `±(rail_inner - root_inset)`.
+    """
+    return (config.body.rail_inner - root_inset(config)) / 2.0
+
+
+def columns(config: TrackConfig = DEFAULT) -> list[tuple[float, float, bool]]:
+    """The six columns as `(x_lo, x_hi, keeps_above)`, left to right.
+
+    Signs alternate the whole way across — up, down, up, down, up, down — so
+    the two pieces interleave in six narrow fingers rather than a few wide
+    ones, and the vertical restraint is spread evenly across the width instead
+    of being bunched at either side.
+
+    The pattern is odd in x, which is the whole of what genderlessness needs
+    (§6.1): reflecting it swaps every tab for a notch, so the same part mates
+    with its own twin.
+    """
+    hw = config.body.half_width
+    root = config.body.rail_inner - root_inset(config)
+    q = deck_column(config)
+    edges = [-hw, -root, -q, 0.0, q, root, hw]
+    return [(edges[i], edges[i + 1], i % 2 == 0)
+            for i in range(len(edges) - 1)]
 
 
 def cuts(config: TrackConfig = DEFAULT) -> list[tuple[str, MeshData]]:
-    """Material removed behind the port plane: notches, slots and grooves.
+    """Material removed behind the port plane: notches, seams and grooves.
 
-    Six columns and one flat split plane at `deck_mid`. Reading across:
-
-        R1 rail | D1 deck | D2 deck | D3 deck | D4 deck | R2 rail
-        below   | below   | above   | below   | above   | above
-
-    Odd in x, so the same part mates with itself (§6.1). Handedness changes at
-    three places, all inside the deck — `±deck_column` and the centreline — and
-    at neither rail root, because each rail runs the same way as the deck
-    column it touches.
+    One tool per column, taking whichever side of the split that column does
+    not keep. Each overshoots its seams by half a clearance rather than
+    stopping on them, so consecutive tools overlap volumetrically instead of
+    sharing a face — §7a requires it, and the reason is concrete: stopped
+    flush, two of these once left a zero-thickness sheet 6 mm long standing
+    inside `curve_45`. Across each seam the overlapping pair between them
+    removes every z, which is what opens the clearance slot there, so there are
+    no separate seam tools.
     """
     body, connector = config.body, config.connector
-    hw, ri, hh = body.half_width, body.rail_inner, body.half_height
+    hw, hh = body.half_width, body.half_height
     lap, clear = connector.lap_length, connector.fit_clearance
     zf = xs = clear / 2.0
     back = -(lap + clear)     # notches are cut one clearance deeper than the tab
-    depth = groove_depth(config)
-    grow = clear / 2.0
     out = outer_margin(config)
+    md, db = body.deck_mid, body.deck_bottom
 
-    md = body.deck_mid
-    db, dt = body.deck_bottom, body.deck_top
-    q = deck_column(config)
+    tools = []
+    for index, (x_lo, x_hi, keeps_above) in enumerate(columns(config)):
+        lo = x_lo - xs if x_lo > -hw else -hw - out
+        hi = x_hi + xs if x_hi < hw else hw + out
+        if keeps_above:
+            z_lo, z_hi = db - EPS, md + zf
+        else:
+            z_lo, z_hi = md - zf, hh + EPS
+        side = "hi" if keeps_above else "lo"
+        tools.append((f"notch_{side}_{index}",
+                      box((lo, back, z_lo), (hi, lap + EPS, z_hi))))
 
-    # Each tool overshoots its seam by `xs` rather than stopping on it, so that
-    # consecutive tools overlap volumetrically instead of sharing a face. §7a
-    # requires it, and the reason is concrete: stopped flush, two of these left
-    # a zero-thickness sheet 6 mm long standing inside `curve_45`. Across each
-    # seam the pair between them removes every z, which is what opens the
-    # clearance slot there — so there are no separate slot tools.
-    return [
-        # R1 + D1 keep what is below the split, so take everything above it
-        ("notch_lo_nx", box((-hw - out, back, md - zf),
-                            (-q + xs, lap + EPS, hh + EPS))),
-        # D2 keeps what is above
-        ("notch_hi_nx", box((-q - xs, back, db - EPS),
-                            (xs, lap + EPS, md + zf))),
-        # D3 keeps what is below
-        ("notch_lo_px", box((-xs, back, md - zf),
-                            (q + xs, lap + EPS, hh + EPS))),
-        # D4 + R2 keep what is above
-        ("notch_hi_px", box((q - xs, back, db - EPS),
-                            (hw + out, lap + EPS, md + zf))),
-
-        # Detent grooves, the mirror of a rib grown by clearance. They go in the
-        # +x rail, the tall one: this piece keeps it above the split, so there
-        # are four millimetres of material to sink a groove into. The mate's
-        # ribs arrive here. Our own ribs are on the -x rail — see `additions`.
-        *[(f"groove_px_{index}", prism_yz(
-            _detent_polygon(config, -offset, md + zf, +1, depth, grow,
-                            mirror=True),
-            ri + clear - grow, hw + out))
-          for index, offset in enumerate(connector.detent_offsets)],
-    ]
+    # Detent grooves, the mirror of a rib grown by clearance. They go in the -x
+    # rail, which the alternation leaves keeping the *tall* part above the
+    # split — four millimetres of material to sink a groove into. Our own ribs
+    # go on the +x rail, which keeps only the thin sliver below it; see
+    # `additions` and `Connector.detent_spacing`.
+    depth, grow = groove_depth(config), clear / 2.0
+    ri = body.rail_inner
+    tools += [(f"groove_nx_{index}", prism_yz(
+        _detent_polygon(config, -offset, md + zf, +1, depth, grow, mirror=True),
+        -hw - out, -ri - clear + grow))
+        for index, offset in enumerate(connector.detent_offsets)]
+    return tools
 
 
 def validate(config: TrackConfig = DEFAULT) -> None:
