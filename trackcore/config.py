@@ -111,30 +111,41 @@ class Connector:
     and is carried over: the mating faces it governs — the lap plane, the
     centreline, the tab tips — are mechanically unchanged by the section swap.
 
-    `lap_length` is **6.0**, down from 8.0.
+    `lap_length` is **3.0**, halved from 6.0, which was itself down from 8.0.
+    `detent_offset` comes down with it, to 1.45 — just under mid-lap rather
+    than on it, because the far detent needs the last fraction of a millimetre
+    to keep its base on the tab. At the old 3.0 the detents would sit past the
+    end of a 3 mm tab entirely, and `connector.validate` refuses that.
 
-    Shortening is not the compromise it looks like. Strain at the tab root goes
-    as `3·δ·h / 2a²`, so a shorter lap demands a shallower detent — but the tab
-    also stiffens as `1/a³` while the deflection it may take only falls as `a²`,
-    so retention scales as `1/a` and goes **up**. At 6.0 with a 0.35 mm detent
-    the root strain is the same 0.8 % it was at 8.0 with 0.50 mm, pull-out is
-    about a third higher, and the joint is 4 mm shorter — which matters most to
-    the shortest parts, where it was most of the piece.
+    Shortening the lap is mostly free, and up to a point it *helps*. The tab
+    stiffens as `1/a³` while the deflection it may take falls only as `a²`, so
+    retention scales as `1/a`: a shorter joint holds harder, and it gives the
+    shortest parts back the length the joint was eating.
 
-    It could go shorter still: the whole catalogue builds down to 4.0. What
-    stops it is print resolution, not mechanics. Below about 0.3 mm a detent is
-    one or two layers and will vary part to part, and that is what the Phase 0
-    comb measures.
+    What is not free is the detent, and at 3.0 it is what limits the design.
+    Strain at the tab root goes as `3·δ·h / 2a²`, so it is `δ/a²` that must be
+    held: halving the lap quarters the detent the tab can carry. Holding the
+    root strain it had at 6.0 would want `δ = 0.09` mm, which is below one
+    layer — no printer resolves it, and a detent that small is not a click.
+    So `detent_height` stays at 0.35 and the root strain is about **four
+    times** what it was.
+
+    That is a deliberate trade, and it inverts what used to constrain this
+    joint: down to 4.0 the limit was print resolution of the detent, and at 3.0
+    it is strain in the tab. Whether 0.35 mm at a 3 mm lap survives repeated
+    assembly is a question about the material, not the geometry, which is
+    exactly what the Phase 0 comb exists to answer — it sweeps lap against
+    detent height and the pairing is read off printed parts.
     """
 
-    lap_length: float = 6.0
+    lap_length: float = 3.0
     fit_clearance: float = 0.15
-    detent_offset: float = 3.0
+    detent_offset: float = 1.45
     detent_height: float = 0.35
     detent_lead_angle_deg: float = 30.0
     detent_return_angle_deg: float = 60.0
 
-    detent_spacing: float = 0.4
+    detent_spacing: float = 0.30
     """Gap between a rail's two detents, as a fraction of the lap.
 
     There are two per rail because the six-column split (§6.1) leaves the two
@@ -151,6 +162,12 @@ class Connector:
     every groove is now in 4 mm of material rather than 0.7.
 
     Set to 0 for a single detent per rail, which is the older, weaker joint.
+
+    It is 0.30, down from 0.40, and at a 3 mm lap it is pinned from both sides:
+    wider and the far detent's buried base runs off the end of the tab, nar-
+    rower and the two clicks merge into one lump. `connector.validate` holds
+    both ends, and there is about a tenth of a millimetre of room between them.
+    That is the honest cost of halving the lap — see `lap_length`.
     """
 
     @property

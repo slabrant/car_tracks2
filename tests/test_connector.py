@@ -445,8 +445,41 @@ def test_opposite_arms_of_a_t_carry_collinear_track():
 
 
 def test_a_piece_too_short_for_two_joints_is_rejected():
+    # derived, not a constant: what counts as too short is two laps plus two
+    # clearances, so a literal here goes stale the moment the lap changes —
+    # which it did, and this test passed a 12 mm piece as "too short" for a
+    # joint that by then needed 6.3
+    reach = 2.0 * (CONN.lap_length + CONN.fit_clearance)
     with pytest.raises(ValueError, match="notches would meet"):
-        build("straight_full", DEFAULT, length=12.0)
+        build("straight_full", DEFAULT, length=reach - 0.1)
+
+
+def test_a_rib_whose_buried_base_runs_off_the_tab_is_refused():
+    """The overhang guard has to measure the whole rib, base included.
+
+    A detent is a triangle whose apex protrudes and whose base is buried
+    `DETENT_SINK` behind the lap face, so material reaches
+    `(height + DETENT_SINK) / tan(lead)` ahead of the apex — 0.43 mm further
+    than the part a mate can feel. Measuring only the proud part passed a
+    config whose ribs hung 0.14 mm past the tab tip, where they land on the
+    floor of the mate's notch before the lap faces seat.
+
+    This config is exactly that case: proud footprint inside the tab, whole
+    rib not.
+    """
+    from trackcore.config import Connector, TrackConfig
+    from trackcore.connector import DETENT_SINK
+
+    lap, height = 3.0, 0.35
+    offset = 2.1
+    tan_lead = math.tan(math.radians(30.0))
+    assert offset + height / tan_lead < lap, "the proud tip fits; that was the trap"
+    assert offset + (height + DETENT_SINK) / tan_lead > lap
+
+    with pytest.raises(ValueError, match="overhang"):
+        connector.validate(TrackConfig(connector=Connector(
+            lap_length=lap, detent_offset=offset, detent_height=height,
+            detent_spacing=0.0)))
 
 
 def test_connector_config_guards_fire():

@@ -154,8 +154,9 @@ def test_no_part_carries_a_not_flippable_flag():
 
 
 def test_a_stub_too_shallow_for_a_joint_is_rejected():
+    shallow = CONN.lap_length + CONN.fit_clearance - 0.1   # derived; see below
     with pytest.raises(GraftInvalid, match="no room for a joint"):
-        Graft(length=GRID.half, depth=4.0).validate(DEFAULT)
+        Graft(length=GRID.half, depth=shallow).validate(DEFAULT)
 
 
 def test_a_support_too_short_for_its_own_end_joints_is_rejected():

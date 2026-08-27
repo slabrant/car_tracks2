@@ -109,9 +109,9 @@ support turned over).
 **`trackcore/config.py`**, class `Connector`, lines 107–112:
 
 ```python
-lap_length: float = 6.0     # how far a tab reaches past the port plane
+lap_length: float = 3.0     # how far a tab reaches past the port plane
 fit_clearance: float = 0.15 # gap on every mating face
-detent_offset: float = 3.0  # where the click sits along the lap
+detent_offset: float = 1.45 # where the click sits along the lap
 detent_height: float = 0.35 # how deep the click is
 detent_lead_angle_deg: float = 30.0   # shallow: pushing together
 detent_return_angle_deg: float = 60.0 # steep: pulling apart
@@ -188,11 +188,14 @@ Two things open, both in `docs/SPEC.md` §11:
 - **Calibration.** `fit_clearance` was measured against the *previous*
   cross-section. The comb re-measures it, and measures `lap_length` for the
   first time.
-- **How short the joint should be.** It is 6.0 mm, down from 8.0. Shorter holds
-  *harder*, not worse: a shorter tab stiffens faster than the deflection it can
-  take shrinks. The catalogue builds at every lap down to 4 mm, so what limits
-  it is print resolution of the detent, not mechanics — which is what the comb
-  measures.
+- **How short the joint should be.** It is 3.0 mm, halved from 6.0. Shorter
+  holds *harder*, not worse: a shorter tab stiffens faster than the deflection
+  it can take shrinks. The catalogue builds and validates at 3.0, but the
+  detent no longer has room to spare — `detent_spacing` had to come down to
+  0.30 to keep the far rib's buried base on the tab, and root strain at an
+  unchanged 0.35 mm detent is about four times what it was at 6.0. What limits
+  the joint has changed from print resolution of the detent to strain in the
+  tab, and which of the two really binds is what the comb measures.
 
 `v1.0-i-profile` tags the previous design, which had rails above *and* below the
 deck so a piece could be turned over. That symmetry is why nothing could lie flat

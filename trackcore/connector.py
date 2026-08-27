@@ -346,17 +346,35 @@ def validate(config: TrackConfig = DEFAULT) -> None:
 
     clear = connector.fit_clearance
     offsets = connector.detent_offsets
-    lead = (connector.detent_height
-            / math.tan(math.radians(connector.detent_lead_angle_deg)))
+    lead_angle = math.radians(connector.detent_lead_angle_deg)
+    back_angle = math.radians(connector.detent_return_angle_deg)
     depth = groove_depth(config)
-    groove_lead = depth / math.tan(
-        math.radians(connector.detent_lead_angle_deg)) + clear / 2.0
-    groove_back = depth / math.tan(
-        math.radians(connector.detent_return_angle_deg)) + clear / 2.0
-    rib_back = (connector.detent_height
-                / math.tan(math.radians(connector.detent_return_angle_deg)))
 
-    if max(offsets) + lead >= connector.lap_length:
+    # Two different footprints, and which one a rule wants depends on what the
+    # rule protects. What a *mate* can feel is only the part standing proud of
+    # the lap face, `height / tan`. What *exists* is the whole polygon, base
+    # included, and `_detent_polygon` sinks that base `DETENT_SINK` behind the
+    # face — so material reaches `(height + DETENT_SINK) / tan` from the apex.
+    #
+    # Rules about two detents fouling each other take the proud footprint: the
+    # buried bases may merge, and merged they are still one solid blob inside
+    # the rail that nothing mates against. Rules about running off the end of
+    # the tab take the sunk one, because that overhang is real material hanging
+    # in the air past the tab tip, and it lands on the floor of the mate's
+    # notch before the lap faces ever seat.
+    #
+    # The distinction only started to matter when the lap got short. At 6 mm
+    # the slack past the far detent was wider than DETENT_SINK's contribution
+    # and the two readings agreed; at 3 mm they differ by 0.43 mm, which was
+    # enough to push each rib 0.14 mm past its tab tip while this check, then
+    # measuring the proud footprint, said there was room.
+    lead = connector.detent_height / math.tan(lead_angle)
+    rib_back = connector.detent_height / math.tan(back_angle)
+    sunk_lead = (connector.detent_height + DETENT_SINK) / math.tan(lead_angle)
+    groove_lead = (depth + DETENT_SINK) / math.tan(lead_angle) + clear / 2.0
+    groove_back = depth / math.tan(back_angle) + clear / 2.0
+
+    if max(offsets) + sunk_lead >= connector.lap_length:
         raise ValueError("detent rib would overhang the end of the tab")
     if max(offsets) + groove_lead >= connector.lap_length + clear:
         raise ValueError("detent groove would run past the back of the notch")

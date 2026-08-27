@@ -175,9 +175,17 @@ def test_a_finished_port_keeps_exactly_its_four_columns(built, name):
     from parts import port_frames
 
     mesh = read_stl(str(built / f"{name}.stl"))
+
+    # Halfway to the near detent, not a fixed millimetre in. A groove is meant
+    # to remove material, so a station that lands on one measures short and
+    # says nothing about the columns. Where the detents sit scales with the
+    # lap, and a literal 1.0 here sat clear of them at a 6 mm lap and exactly
+    # on the near groove's apex at 3 mm — every part failed by one groove.
+    station = 0.5 * min(DEFAULT.connector.detent_offsets)
+
     for index, frame in enumerate(port_frames(name)):
         forward = frame[:3, 1]
-        inside = frame[:3, 3] - 1.0 * forward          # inside the lap zone
+        inside = frame[:3, 3] - station * forward      # inside the lap zone
         area = cross_section_area(mesh, inside, forward, within=20.0)
         assert area == pytest.approx(_tab_area(), rel=5e-3), (
             f"{name} port {index} measures {area:.3f} mm², "

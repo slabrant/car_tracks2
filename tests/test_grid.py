@@ -156,7 +156,11 @@ def test_a_bare_ramp_pitches_inside_its_lap_zone():
     bare = Path.chain(Ramp(run=84.0, rise=34.0))
     pitch = max(abs(float(bare.tangent(float(s))[2]))
                 for s in np.linspace(0.0, LAP, 12))
-    assert pitch > 0.1, "expected a bare ramp to pitch where the connector bites"
+    # the window is the lap zone, so it shrinks with the lap and the pitch
+    # inside it shrinks too — 12 degrees over the old 8 mm lap, 5 over 3 mm.
+    # What is being pinned is that a bare ramp pitches *at all* where flat cut
+    # boxes reach in, against a fitted ramp that is dead flat there.
+    assert pitch > 0.05, "expected a bare ramp to pitch where the connector bites"
 
     fitted = PATHS["ramp"]()
     assert max(abs(float(fitted.tangent(float(s))[2]))
@@ -170,12 +174,16 @@ def test_a_banked_arc_reaches_its_full_bank_in_the_middle():
 
 
 def test_a_banked_arc_too_short_to_stay_flat_is_rejected():
+    # derived from the rule's own threshold; a literal angle here stopped
+    # testing anything when the lap halved and 30 degrees became long enough
+    radius = 20.0
+    angle = 0.9 * 2.0 * DEFAULT_PORT_CLEAR / radius
     with pytest.raises(ValueError, match="lap zones stay flat"):
-        Arc(radius=20.0, angle=math.radians(30.0), bank=math.radians(10.0))
+        Arc(radius=radius, angle=angle, bank=math.radians(10.0))
 
 
 def test_an_unbanked_arc_of_any_length_is_still_allowed():
-    Arc(radius=20.0, angle=math.radians(30.0))
+    Arc(radius=20.0, angle=0.9 * 2.0 * DEFAULT_PORT_CLEAR / 20.0)
 
 
 # -- build volume ------------------------------------------------------------

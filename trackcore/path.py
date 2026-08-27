@@ -27,7 +27,7 @@ BANK_RAMP_FRACTION = 0.1
 """Bank eases in and out over this fraction of the arc at each end."""
 
 DEFAULT_PORT_CLEAR = (Connector().lap_length + Connector().fit_clearance + 2.0)
-"""How much of each end must stay flat, mm. 10.15 at default dimensions.
+"""How much of each end must stay flat, mm. 5.15 at default dimensions.
 
 **The cross-section must not roll inside a lap zone.** The connector's cut tools
 are flat boxes aligned to the port frame (§6.6); if the section has rolled by
