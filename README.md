@@ -10,9 +10,13 @@ by a path or an arm layout, and the geometry falls out.
 | file | what |
 |---|---|
 | `out/comb/comb_all.stl` | **calibration plate** — 18 coupons, 204 × 108 mm. Print this **first**. |
-| `out/set/*.stl` | the 15 parts — straights, curves, ramp, junctions, support |
+| `out/set/*.stl` | the 16 parts — straights, curves, ramp, loop, junctions, support |
 
-All parts lie flat, deck down, and bridge nothing. No supports needed.
+Fifteen of the sixteen lie flat, deck down, and bridge nothing: no supports
+needed. The **loop** is the exception and cannot be made into one — it is a
+100 mm circle standing on edge, and there is no orientation that puts it on
+the bed. Print it in its own plane, with supports, and expect the rail that
+ends up facing the ceiling to be the rough one.
 
 The calibration plate settles two numbers by measurement rather than argument.
 See `phase0/README.md` for how to read its tally marks and what to judge.
@@ -80,6 +84,10 @@ across the road.
 - **detent rib / groove** — the click
 - **port** — one end of a piece; **port plane** — where two pieces meet
 
+Loop: **drift** (how far it steps sideways going round, so it passes beside
+its own entry rather than through it) and **twist** (the roll that drift hands
+to whatever follows, `drift / radius`).
+
 Junctions: **hub** (the middle), **arm** (one stub), **armpit** (where two arms
 meet), **fillet** (a rounded armpit — its radius is a car's turn radius).
 Supports: **stub** (the column), **leg** (a straight stood on end), **foot** (a
@@ -97,6 +105,7 @@ support turned over).
 | `curve_90_tight` | tighter right angle | 48 mm radius |
 | `curve_90_banked` | leans into the turn | 10° |
 | `ramp` | up to bridge height | 192 mm run, 48 mm rise |
+| `loop` | a vertical loop; **needs supports, does not tile** | 48 mm radius, 26 mm sideways |
 | `x_junction` / `x_rounded` | four ways, square / filleted corners | |
 | `t_junction` / `t_rounded` | three ways, one straight through | |
 | `y_junction` / `y_rounded` | three ways at 120°, all alike | |
@@ -182,6 +191,20 @@ somebody to open a viewport.
 Working and green: the section, all three constructions, the connector, the
 15-part catalogue on a 96 mm grid, and bridges that stand on legs made of
 ordinary straights.
+
+The **loop** is the newest part and the only one that breaks the set's two
+standing promises. It does not lie flat, and it does not tile: a vertical
+circle ends where it began, so it has to step 26 mm sideways on the way round
+or pass through its own entry, and 26 mm is not a grid module. A layout that
+goes through a loop comes out travelling the way it went in, a track's width
+across — the same bargain the 120° Y makes, for a different reason.
+
+Whether a car gets round it is a question this repository cannot answer. The
+speed at the top has to satisfy `v² ≥ gR`, so entering at the bottom needs
+`v ≥ sqrt(5gR)` — about 1.5 m/s at a 48 mm radius, which is a drop of 2.5
+radii before any friction at all, and 120 mm is more than the 48 mm bridge
+height in this set can give. Launch it from something taller, or use a
+smaller radius: `--radius` builds any of them.
 
 Two things open, both in `docs/SPEC.md` §11:
 

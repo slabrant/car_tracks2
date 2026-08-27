@@ -7,6 +7,7 @@ absent, which keeps §9.26 honest: the rest of the suite runs without it.
 
 from __future__ import annotations
 
+import math
 import pathlib
 import re
 import shutil
@@ -17,10 +18,16 @@ import pytest
 from parts import CATALOGUE, HUBS, build
 from trackcore import DEFAULT, check, profile_area, read_stl
 from trackcore.mesh import cross_section_area
+from trackcore.path import DEFAULT_LOOP_DRIFT
 from trackcore.validate import signed_volume
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 BLENDER = shutil.which("blender")
+
+NEARBY = (math.hypot(DEFAULT.body.half_width, DEFAULT.body.half_height)
+          + DEFAULT_LOOP_DRIFT - DEFAULT.body.half_width) / 2.0
+"""Probe radius for a section cut, mm. `test_shape.NEARBY` states the reasoning:
+wide enough for all of this section, narrow enough to miss the loop's other run."""
 
 pytestmark = pytest.mark.skipif(BLENDER is None,
                                 reason="Blender not on PATH")
@@ -186,7 +193,7 @@ def test_a_finished_port_keeps_exactly_its_four_columns(built, name):
     for index, frame in enumerate(port_frames(name)):
         forward = frame[:3, 1]
         inside = frame[:3, 3] - station * forward      # inside the lap zone
-        area = cross_section_area(mesh, inside, forward, within=20.0)
+        area = cross_section_area(mesh, inside, forward, within=NEARBY)
         assert area == pytest.approx(_tab_area(), rel=5e-3), (
             f"{name} port {index} measures {area:.3f} mm², "
             f"expected {_tab_area():.3f}"
@@ -225,7 +232,7 @@ def test_a_finished_body_is_still_full_track(built, name):
         normal = frame[:3, 1]
         point = frame[:3, 3] - (reach + 2.0) * normal
 
-    area = cross_section_area(mesh, point, normal, within=20.0)
+    area = cross_section_area(mesh, point, normal, within=NEARBY)
     assert area == pytest.approx(profile_area(DEFAULT.body), rel=5e-3), (
         f"{name} measures {area:.3f} mm² clear of its joint"
     )

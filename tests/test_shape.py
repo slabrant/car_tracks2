@@ -21,18 +21,35 @@ from parts import CATALOGUE, HUBS, PATHS, port_frames
 from trackcore import DEFAULT, Arc, Line, Path, Ramp, profile_area, sweep
 from trackcore.connector import tab_area
 from trackcore.mesh import cross_section_area
+from trackcore.path import DEFAULT_LOOP_DRIFT
 
 BODY = DEFAULT.body
 CONN = DEFAULT.connector
 FULL = profile_area(BODY)
 
-NEARBY = 20.0
-"""How far from the sampled centreline a cut still counts, mm.
+SECTION_REACH = math.hypot(BODY.half_width, BODY.half_height)
+"""Furthest corner of the section from its own centreline, mm. 12.23."""
 
-A plane is infinite. Square to a curve's tangent it slices the far side of the
-same curve too, and the areas add. The section is under 12.5 mm from its own
-centreline, and the nearest other material on such a plane is over 24 mm away
-even on the tightest legal arc, so this sits safely between the two.
+NEAREST_OTHER = DEFAULT_LOOP_DRIFT - BODY.half_width
+"""Closest another run of the same part comes to the one being measured, mm.
+
+14.0, and it is the `loop` that sets it: its two ends pass each other one
+drift apart, so the neighbouring run's near edge is a drift less half a width
+away. Every other part in the set keeps its runs further apart than that.
+"""
+
+NEARBY = (SECTION_REACH + NEAREST_OTHER) / 2.0
+"""How far from the sampled centreline a cut still counts, mm. 13.1.
+
+A plane is infinite. Square to a curve's tangent it slices whatever else of the
+same part lies on it, and the areas do not simply add — a neighbouring run
+caught side-on contributes a partial polygon that can cancel against the real
+one. So this has to sit between the two bounds above: wide enough to take in
+all of the section being measured, narrow enough to miss the nearest other.
+
+It was 20.0, from when the nearest other material on such a plane was over
+24 mm away even on the tightest arc. The loop closed that gap to 14 and a
+20 mm disc started reading a port at half its area.
 """
 
 
@@ -61,17 +78,33 @@ def test_a_swept_body_holds_its_section_all_the_way_along(name):
     """
     path = PATHS[name]()
     mesh = sweep(path)
-    sampled = 0
+    sampled, twisted = 0, []
     for fraction in np.linspace(0.08, 0.92, 9):
         s = float(fraction * path.length)
+        area = cross_section_area(mesh, path.point(s), path.tangent(s), within=NEARBY)
         if _twisting(path, s):
+            twisted.append((s, area))
             continue
         sampled += 1
-        area = cross_section_area(mesh, path.point(s), path.tangent(s), within=NEARBY)
         assert area == pytest.approx(FULL, rel=2e-3), (
             f"{name} measures {area:.3f} mm² at s={s:.1f}, expected {FULL:.3f}"
         )
-    assert sampled >= 3, f"{name}: too few places to measure"
+
+    if sampled == 0:
+        # A `loop` twists the whole way round — the drift's torsion is spread
+        # over the turn — so there is no flat station between its lead-ins to
+        # measure. Asserting nothing there would leave the one part where a
+        # fold is most plausible unchecked, so measure it as a twisting
+        # section: the ruled surface between rotated rings can only read
+        # *larger* than the profile, never smaller, and only a little.
+        assert twisted, f"{name}: nothing sampled at all"
+        for s, area in twisted:
+            assert FULL * (1.0 - 1e-9) <= area <= FULL * 1.02, (
+                f"{name} measures {area:.3f} mm² at s={s:.1f}; a twisting "
+                f"section may read a little over {FULL:.3f} but never under"
+            )
+    else:
+        assert sampled >= 3, f"{name}: too few places to measure"
 
 
 def test_a_twisting_section_reads_larger_and_that_is_real():

@@ -14,13 +14,13 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
-from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Path, Piece, Ramp,
-                       TrackConfig, applied, port_matrices, sweep,
+from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Loop, Path, Piece,
+                       Ramp, TrackConfig, applied, port_matrices, sweep,
                        swept_with_ports)
 from trackcore.connector import port_extension
 from trackcore.connector import validate as validate_connector
 from trackcore.mesh import translation
-from trackcore.path import DEFAULT_PORT_CLEAR
+from trackcore.path import DEFAULT_LOOP_DRIFT, DEFAULT_PORT_CLEAR
 
 PathBuilder = Callable[..., Path]
 HubBuilder = Callable[..., Hub]
@@ -109,6 +109,28 @@ def ramp(run: float = GRID.module * GRID.ramp_modules,
                       Line(lead))
 
 
+def loop(radius: float = GRID.half, drift: float = DEFAULT_LOOP_DRIFT,
+         lead: float = DEFAULT_PORT_CLEAR) -> Path:
+    """A vertical loop, on a flat lead at each end.
+
+    Radius is half a module, so the loop stands one module tall and its
+    circle is one module across — the same 48 mm that `curve_90_tight` turns
+    through horizontally, stood on its edge.
+
+    The leads are the same bargain the ramp makes, for the same reason: the
+    loop's vertical curvature is greatest nowhere in particular — it is a
+    circle, so it is the same everywhere — and the connector's cut tools are
+    flat boxes. Without a flat lead they would bite into a section that has
+    already pitched six degrees. `ramp` documents what that does.
+
+    Unlike every other part in the set, this one does not lie flat and does
+    not tile. Both are noted in the README; neither is fixable by geometry.
+    """
+    turn = Loop(radius=radius, drift=drift)
+    return Path.chain(Line(lead), turn,
+                      Line(lead, roll_offset=turn.twist))
+
+
 def s_bend(radius: float = GRID.module, angle_deg: float = 45.0,
            lead: float = 20.0) -> Path:
     """Not a part. It exists because straight → left → right → straight is
@@ -189,6 +211,7 @@ PATHS: dict[str, PathBuilder] = {
     "curve_90_banked": partial(curve, radius=GRID.module, angle_deg=90.0,
                                bank_deg=GRID.bank_deg),
     "ramp": ramp,
+    "loop": loop,
     "s_bend": s_bend,
 }
 

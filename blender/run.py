@@ -67,6 +67,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--run", type=float, default=None)
     parser.add_argument("--rise", type=float, default=None)
     parser.add_argument("--corner-radius", type=float, default=None)
+    parser.add_argument("--drift", type=float, default=None,
+                        help="how far a loop steps sideways, mm")
     parser.add_argument("--no-connectors", action="store_true",
                         help="flat-ended pieces, for measuring the bare body")
     return parser.parse_args(argv)
@@ -81,6 +83,8 @@ def kwargs_for(name: str, args: argparse.Namespace) -> dict:
                   "bank_deg": args.bank}
     elif name.startswith("ramp"):
         chosen = {"run": args.run, "rise": args.rise}
+    elif name.startswith("loop"):
+        chosen = {"radius": args.radius, "drift": args.drift}
     else:
         chosen = {"corner_radius": args.corner_radius}
     if name == "s_bend":

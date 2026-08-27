@@ -104,7 +104,13 @@ def swept_with_ports(path: Path, config: TrackConfig = DEFAULT) -> MeshData:
     extend = port_extension(config)
     if not extend:
         return sweep(path, config)
-    long_path = Path.chain(Line(extend), *path.primitives, Line(extend))
+    # the extension continues the port it extends, roll included: a `loop`
+    # leaves its exit straight rolled by the loop's twist, and an extension
+    # tacked on at zero would step in roll against it and be refused
+    head = path.primitives[0].roll(0.0)
+    tail = path.primitives[-1].roll(path.primitives[-1].length)
+    long_path = Path.chain(Line(extend, roll_offset=head), *path.primitives,
+                           Line(extend, roll_offset=tail))
     return sweep(long_path, config).transformed(
         translation(0.0, -extend, 0.0))
 

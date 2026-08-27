@@ -22,6 +22,7 @@ Two claims, and the second is the one with teeth:
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 
@@ -38,7 +39,20 @@ from blender.run import build_part  # noqa: E402
 from parts import port_frames  # noqa: E402
 from trackcore import DEFAULT, MATE, TrackConfig, profile_area  # noqa: E402
 from trackcore.mesh import cross_section_area  # noqa: E402
+from trackcore.path import DEFAULT_LOOP_DRIFT  # noqa: E402
 from trackcore.validate import signed_volume  # noqa: E402
+
+
+NEARBY = (math.hypot(DEFAULT.body.half_width, DEFAULT.body.half_height)
+          + DEFAULT_LOOP_DRIFT - DEFAULT.body.half_width) / 2.0
+"""How far from the port axis a section cut still counts, mm. 13.1.
+
+Wide enough to take in all of the section being measured — its furthest corner
+is 12.23 mm out — and narrow enough to miss anything else of the same part on
+the same plane. The loop sets the upper bound: its two ends pass one drift
+apart, so a 30 mm disc read a loop port at 49.8 mm² of a 41.5 mm² section,
+counting the run going past as if it were part of the joint.
+"""
 
 
 def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
@@ -73,8 +87,8 @@ def interlock(mesh_a, mesh_b, frame, config: TrackConfig = DEFAULT,
         point = origin + axis * float(t)
         readings.append((
             float(t),
-            cross_section_area(mesh_a, point, axis, within=30.0),
-            cross_section_area(mesh_b, point, axis, within=30.0),
+            cross_section_area(mesh_a, point, axis, within=NEARBY),
+            cross_section_area(mesh_b, point, axis, within=NEARBY),
         ))
     return readings
 

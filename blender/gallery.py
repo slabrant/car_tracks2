@@ -9,6 +9,7 @@ a 24 mm straight and a 192 mm ramp both fill the frame.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 
@@ -26,6 +27,34 @@ from parts import CATALOGUE  # noqa: E402
 BODY_COLOUR = (0.78, 0.44, 0.22, 1.0)
 
 
+def fit_scale(lo, hi, azimuth: float, elevation: float, resolution) -> float:
+    """Ortho width that holds the whole part, seen from this camera.
+
+    The bounding box is in world axes and the camera is not, so its longest
+    side is not what the frame has to hold: what matters is the box's extent
+    *across the camera's own two axes*, which is found by projecting the eight
+    corners onto them. And `ortho_scale` sets the frame's **width**, so a part
+    taller than it is wide has to be fitted by height and converted back.
+
+    Sizing on `max(hi - lo)` alone was fine while every part lay flat and was
+    longer than it was tall. The loop is neither: it is 100 mm tall in a 4:3
+    frame, and it came out with its top and bottom cut off.
+    """
+    az, el = math.radians(azimuth), math.radians(elevation)
+    direction = np.array([math.cos(el) * math.cos(az),
+                          math.cos(el) * math.sin(az), math.sin(el)])
+    right = np.cross(np.array([0.0, 0.0, 1.0]), direction)
+    right = right / np.linalg.norm(right)
+    up = np.cross(direction, right)
+
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0])
+                        for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+    across = np.ptp(corners @ right)
+    tall = np.ptp(corners @ up)
+    aspect = resolution[0] / resolution[1]
+    return float(max(across, tall * aspect))
+
+
 def shoot(name: str, outdir: str, azimuth: float, elevation: float,
           margin: float, resolution, extra_kwargs=None):
     collection = reset_scene()
@@ -35,7 +64,7 @@ def shoot(name: str, outdir: str, azimuth: float, elevation: float,
     mesh = from_object(obj)
     lo, hi = mesh.bounds()
     centre = (lo + hi) / 2.0
-    scale = float(np.max(hi - lo)) * margin
+    scale = fit_scale(lo, hi, azimuth, elevation, resolution) * margin
 
     add_camera(tuple(centre), 800.0, azimuth, elevation, scale)
     path = os.path.join(outdir, f"{name}.png")

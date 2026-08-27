@@ -123,11 +123,20 @@ def test_a_tight_curve_closes_its_own_loop():
 def test_the_lap_zone_at_every_port_is_free_of_roll(name):
     """§6.6's cut tools are flat boxes in the port frame. If the section has
     rolled by the time they reach in, they slice it at the wrong height on each
-    rail. A banked curve without this came out genus 3."""
+    rail. A banked curve without this came out genus 3.
+
+    What must not happen is the roll *changing* under the tools, not the roll
+    being zero: the port frame is built from the rolled frame, so a section
+    that arrives already rolled and stays there is cut square anyway. The two
+    readings agreed on every part until the `loop`, whose exit straight carries
+    the loop's twist all the way to its port — a constant 31 degrees, and a
+    port that mates like any other.
+    """
     path = PATHS[name]()
     for s in np.linspace(0.0, LAP, 12):
-        assert path.roll(float(s)) == pytest.approx(0.0, abs=1e-12)
-        assert path.roll(float(path.length - s)) == pytest.approx(0.0, abs=1e-12)
+        assert path.roll(float(s)) == pytest.approx(path.roll(0.0), abs=1e-12)
+        assert path.roll(float(path.length - s)) == pytest.approx(
+            path.roll(path.length), abs=1e-12)
 
 
 @pytest.mark.parametrize("name", [n for n in CATALOGUE if n in PATHS])

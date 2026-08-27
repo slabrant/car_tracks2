@@ -81,9 +81,18 @@ class Primitive(Protocol):
 
 @dataclass(frozen=True)
 class Line:
-    """A straight run."""
+    """A straight run.
+
+    ``roll_offset`` is a constant orientation offset, in radians, applied on
+    top of the rotation-minimising frame. It exists for one job: a `Loop`
+    twists the frame by `drift / radius` on its way round, and the straight
+    leaving the loop has to carry that same offset, or its section comes out
+    lying at that angle. Constant, so it is not a bank — nothing rolls *along*
+    a Line, and a lap zone on one is as flat as any other.
+    """
 
     length: float
+    roll_offset: float = 0.0
 
     def __post_init__(self) -> None:
         if self.length <= 0:
@@ -96,7 +105,7 @@ class Line:
         return np.array([0.0, 1.0, 0.0])
 
     def roll(self, s: float) -> float:
-        return 0.0
+        return self.roll_offset
 
     def curvature(self, s: float) -> float:
         return 0.0
@@ -279,6 +288,221 @@ class Ramp:
 
     def end_transform(self) -> np.ndarray:
         return translation(0.0, self.run, self.rise)
+
+
+DEFAULT_LOOP_DRIFT = Body().width_outer + 2.0
+"""How far a loop steps sideways over its turn, mm. 26.0 at default dimensions.
+
+A vertical circle ends where it began. Swept as a solid that is not a joint,
+it is a piece passing through itself at the bottom, and no amount of care in
+the mesh code makes it printable. The loop therefore drifts **across** the
+direction of travel as it goes round, by more than the track is wide, so the
+run coming out passes beside the run going in with air between them.
+
+Which is what a real loop does too, and for the same reason. Two millimetres
+of that clearance is air; the rest is track.
+"""
+
+
+@dataclass(frozen=True)
+class Loop:
+    """A vertical loop: one full turn in the plane of travel, §4.1.
+
+    The car goes over the top upside down, held there by speed rather than by
+    the rails — which is a fact about the car, not about this geometry. What
+    the geometry has to get right is that the channel faces **inward** the whole
+    way round, and it does so for free: the rotation-minimising frame carries
+    `up` with the tangent, so at the top of the loop `up` points at the floor
+    and the deck is over the car's roof.
+
+    Two things make it a helix rather than a circle.
+
+    The **drift**: a closed circle would come back to its own start, so the
+    piece would pass through itself where it crosses. See `DEFAULT_LOOP_DRIFT`.
+
+    The **easing**: the drift follows a smoothstep in turn angle rather than
+    growing linearly, so its lateral rate is zero at both ends. That is what
+    lets the loop leave and rejoin heading exactly `+Y`, with no kink against
+    the straights either side of it. Grown linearly the piece would enter at an
+    angle — atan(drift / 2*pi*radius), about five degrees at the defaults —
+    and `Path` would refuse it, rightly.
+
+    `end_transform` is a pure sideways translation: a loop advances the track
+    not at all along its own direction, and moves it one drift across. A layout
+    that goes through a loop comes out travelling the way it went in, offset.
+    """
+
+    radius: float
+    drift: float = DEFAULT_LOOP_DRIFT
+    min_radius: float = DEFAULT_MIN_RADIUS
+    min_drift: float = Body().width_outer
+    samples: int = 2001
+
+    _u_table: np.ndarray = field(default=None, repr=False, compare=False)
+    _s_table: np.ndarray = field(default=None, repr=False, compare=False)
+    _twist_table: np.ndarray = field(default=None, repr=False, compare=False)
+    _length: float = field(default=0.0, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.radius <= 0:
+            raise ValueError("Loop radius must be positive")
+        if self.drift <= self.min_drift:
+            raise ValueError(
+                f"a loop drifting {self.drift:.1f} mm across a track "
+                f"{self.min_drift:.1f} mm wide would pass through itself where "
+                f"it crosses at the bottom"
+            )
+
+        u = np.linspace(0.0, 2.0 * math.pi, self.samples)
+        p = self._point_at(u)
+        seg = np.linalg.norm(np.diff(p, axis=0), axis=1)
+        table = np.concatenate([[0.0], np.cumsum(seg)])
+        object.__setattr__(self, "_u_table", u)
+        object.__setattr__(self, "_s_table", table)
+        object.__setattr__(self, "_length", float(table[-1]))
+        object.__setattr__(self, "_twist_table", self._accumulate_twist(u))
+
+        r = self.min_radius_of_curvature()
+        if r < self.min_radius:
+            raise PathTooTightError(
+                f"Loop(radius={self.radius}, drift={self.drift}) bends to a "
+                f"radius of {r:.2f} mm, below the minimum {self.min_radius} mm"
+            )
+
+    # -- the curve, in turn angle ----------------------------------------
+    #
+    # Turn angle `u` runs 0 to 2*pi. In the loop's own plane the curve is the
+    # circle (radius * sin u, radius * (1 - cos u)), which starts at the origin
+    # heading +Y, is inverted at u = pi, and closes at u = 2*pi. Across the
+    # plane it steps `drift * smoothstep(u / 2*pi)`.
+
+    def _drift_at(self, u):
+        t = u / (2.0 * math.pi)
+        return self.drift * t * t * (3.0 - 2.0 * t)
+
+    def _point_at(self, u):
+        return np.stack([self._drift_at(u),
+                         self.radius * np.sin(u),
+                         self.radius * (1.0 - np.cos(u))], axis=-1)
+
+    def _d1(self, u):
+        """dP/du. The smoothstep's derivative is zero at both ends, which is
+        what keeps the end tangents exactly +Y."""
+        t = u / (2.0 * math.pi)
+        dx = self.drift * 6.0 * t * (1.0 - t) / (2.0 * math.pi)
+        return np.stack([dx,
+                         self.radius * np.cos(u),
+                         self.radius * np.sin(u)], axis=-1)
+
+    def _d2(self, u):
+        t = u / (2.0 * math.pi)
+        ddx = self.drift * (6.0 - 12.0 * t) / (2.0 * math.pi) ** 2
+        return np.stack([ddx,
+                         -self.radius * np.sin(u),
+                         self.radius * np.cos(u)], axis=-1)
+
+    # -- the twist -------------------------------------------------------
+
+    def _desired_up(self, u):
+        """Where the channel must face: straight at the loop's own centre.
+
+        In the loop's plane the inward radial direction is
+        `(-sin u, cos u)`, which is `+Z` at both ends and `-Z` over the top.
+        Square to the plane, so the drift is not banked into — the section
+        stays level where the loop is level, which is what lets the exit port
+        mate with an ordinary straight.
+        """
+        return np.stack([np.zeros_like(u), -np.sin(u), np.cos(u)], axis=-1)
+
+    def _accumulate_twist(self, u):
+        """How far to roll the frame at each station, radians.
+
+        A drifting loop is a helix, and a helix has torsion. The frame in
+        `frames.py` is rotation-*minimising*, not torsion-following: it carries
+        the section round without ever turning it about the tangent, so by the
+        time the track is level again the section is lying at an angle. That
+        angle is not small — it comes to almost exactly `drift / radius`, 31
+        degrees at the defaults, and it would be where the exit port sits: a
+        port no other piece in the set can mate with.
+
+        So the roll is measured, not derived: build the same frame `frames.py`
+        will build, and record the signed angle from it to `_desired_up` at
+        every station. Rolling by that lands the section where it belongs the
+        whole way round, level ends included.
+
+        The import is deferred because `frames` imports this module. That is
+        the honest shape of the dependency: a primitive that has to undo what
+        the frame builder does needs to know what it does.
+        """
+        from .frames import rotation_minimising
+
+        points, tangents = self._point_at(u), self._d1(u)
+        tangents = tangents / np.linalg.norm(tangents, axis=-1)[:, None]
+        _across, up = rotation_minimising(points, tangents)
+
+        want = self._desired_up(u)
+        # signed angle about the tangent, from the frame's up to the wanted one
+        sin = (np.cross(up, want) * tangents).sum(axis=-1)
+        cos = (up * want).sum(axis=-1)
+        return np.unwrap(np.arctan2(sin, cos))
+
+    @property
+    def twist(self) -> float:
+        """Total roll the loop hands to whatever follows it, radians.
+
+        Very nearly `drift / radius`: a loop that steps one track-width
+        sideways over a radius of two track-widths twists the section by about
+        half a radian, and there is no arranging the drift to avoid it. What
+        follows the loop has to carry this, which is what `Line.roll_offset`
+        is for.
+        """
+        return float(self._twist_table[-1])
+
+    # -- Primitive -------------------------------------------------------
+
+    @property
+    def length(self) -> float:
+        return self._length
+
+    def _u(self, s: float) -> float:
+        return float(np.interp(s, self._s_table, self._u_table))
+
+    def point(self, s: float) -> Vec3:
+        return self._point_at(np.float64(self._u(s)))
+
+    def tangent(self, s: float) -> Vec3:
+        return _unit(self._d1(np.float64(self._u(s))))
+
+    def roll(self, s: float) -> float:
+        """The torsion the rotation-minimising frame did not follow.
+
+        Note what is *not* here: going upside down at the top. That is the
+        path turning over and carrying the section with it, which the frame
+        does on its own. This is only the sideways twist the drift adds; see
+        `_accumulate_twist`.
+        """
+        return float(np.interp(s, self._s_table, self._twist_table))
+
+    def curvature(self, s: float) -> float:
+        return float(self._curvature_at(np.float64(self._u(s))))
+
+    def _curvature_at(self, u):
+        d1, d2 = self._d1(u), self._d2(u)
+        return (np.linalg.norm(np.cross(d1, d2), axis=-1)
+                / np.linalg.norm(d1, axis=-1) ** 3)
+
+    def min_radius_of_curvature(self) -> float:
+        peak = float(np.max(self._curvature_at(self._u_table)))
+        return math.inf if peak == 0.0 else 1.0 / peak
+
+    def stations(self, sag: float) -> list[float]:
+        r = self.min_radius_of_curvature()
+        step = 2.0 * math.sqrt(max(2.0 * r * sag, 1e-12))
+        n = max(1, math.ceil(self.length / step))
+        return [self.length * i / n for i in range(n + 1)]
+
+    def end_transform(self) -> np.ndarray:
+        return translation(self.drift, 0.0, 0.0)
 
 
 # --------------------------------------------------------------------------
