@@ -114,13 +114,17 @@ def test_the_port_is_genderless():
     assert checked > 2000, "not enough of the section was sampled"
 
 
-def test_the_six_columns_alternate_all_the_way_across():
-    """§6.1. Up, down, up, down, up, down — so the two pieces interleave in six
-    narrow fingers and the vertical restraint is spread across the width
-    instead of bunched at either side."""
+def test_the_columns_alternate_all_the_way_across():
+    """§6.1. Up, down, up, down, across the whole section.
+
+    The count is a dial now, and what has to hold at any setting is the
+    alternation, since that is what makes the pattern odd in x and the part
+    mate with its own twin. The seam count follows: one fewer than the columns.
+    """
     from trackcore.connector import columns
+    expected = CONN.column_count
     sides = [keeps_above for _lo, _hi, keeps_above in columns(DEFAULT)]
-    assert len(sides) == 6
+    assert len(sides) == expected
     assert all(a != b for a, b in zip(sides, sides[1:])), sides
 
     # and the same read off the geometry rather than the model
@@ -128,11 +132,40 @@ def test_the_six_columns_alternate_all_the_way_across():
     xs = np.linspace(-BODY.half_width + 0.05, BODY.half_width - 0.05, 4001)
     states = [_removed(float(x), z) for x in xs]
     changes = sum(1 for a, b in zip(states, states[1:]) if a != b)
-    assert changes == 5, f"expected 5 seams across the section, saw {changes}"
+    assert changes == expected - 1, (
+        f"expected {expected - 1} seams across the section, saw {changes}"
+    )
+
+
+def test_an_odd_column_count_is_refused():
+    """An odd count cannot alternate and stay odd in x, so the part would stop
+    mating with its own twin. Caught in config, before any geometry."""
+    from trackcore.config import Connector
+    for bad in (1, 3, 5):
+        with pytest.raises(ValueError, match="odd in x"):
+            Connector(column_count=bad).validate()
+    Connector(column_count=4).validate()
+
+
+def test_no_seam_lands_near_a_rail_root():
+    """The rails are part of the teeth now, so nothing is cut out there — but
+    a column count that put a seam near a rail root would bring the old
+    `curve_45` failure back, and `validate` refuses it rather than trusting the
+    default to stay lucky."""
+    from trackcore.config import Connector, TrackConfig
+    from trackcore.connector import columns, root_inset
+
+    keep_out = root_inset(DEFAULT)
+    for _lo, hi, _above in columns(DEFAULT)[:-1]:
+        assert abs(abs(hi) - BODY.rail_inner) >= keep_out, hi
+
+    # 22 columns puts a seam at 10.909, a fifth of a millimetre off the root
+    with pytest.raises(ValueError, match="rail root"):
+        connector.validate(TrackConfig(connector=Connector(column_count=22)))
 
 
 def test_a_rail_column_carries_no_deck():
-    """What the six-column split is for.
+    """What the split's outermost seam is for.
 
     A rail column is pure rail: it runs the same way as the deck column beside
     it, so the join between them needs no clearance and there is no seam at the

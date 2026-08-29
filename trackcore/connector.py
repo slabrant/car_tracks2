@@ -252,6 +252,12 @@ def root_inset(config: TrackConfig = DEFAULT) -> float:
     whatever the curvature does. Sized for the tightest legal radius, so it is
     curvature-proof rather than lucky.
 
+    Nothing places a seam out here any more — the rails are part of the teeth
+    now, so the outermost cut is the outside of the section, not a seam in the
+    deck. What remains is a **keep-out**: `validate` refuses a column layout
+    that puts any seam within this distance of a rail root, so whatever the
+    column count, no cut ever grazes that corner.
+
     The outermost column therefore carries a strip of deck as well as its rail.
     With the split a single flat plane (§6.1) that costs nothing: the strip is
     split at `deck_mid` like the rest of the deck, so it is still lapped, and
@@ -265,30 +271,34 @@ def root_inset(config: TrackConfig = DEFAULT) -> float:
 
 
 def deck_column(config: TrackConfig = DEFAULT) -> float:
-    """Width of one of the four middle columns, mm.
+    """Width of one column, mm.
 
-    They divide what is left between the two outermost seams, which sit at
-    `±(rail_inner - root_inset)`.
+    The columns divide the whole section evenly, rails included — see
+    `Connector.column_count` for why the rails are not columns of their own.
     """
-    return (config.body.rail_inner - root_inset(config)) / 2.0
+    return config.body.width_outer / config.connector.column_count
 
 
 def columns(config: TrackConfig = DEFAULT) -> list[tuple[float, float, bool]]:
-    """The six columns as `(x_lo, x_hi, keeps_above)`, left to right.
+    """The columns as `(x_lo, x_hi, keeps_above)`, left to right.
 
-    Signs alternate the whole way across — up, down, up, down, up, down — so
-    the two pieces interleave in six narrow fingers rather than a few wide
-    ones, and the vertical restraint is spread evenly across the width instead
-    of being bunched at either side.
+    `Connector.column_count` of them, dividing the section evenly from one
+    outside face to the other. Signs alternate, up, down, up, down, so the two
+    pieces interleave rather than butting.
+
+    **The rails are not columns.** Each is simply the tall outer edge of the
+    tooth it falls in, and that is the whole of what changed after the first
+    prints: cutting them out as fingers of their own left two 1.6 mm sticks per
+    port, carrying the detents and snapping off during assembly. There is no
+    seam at a rail root now because there is no seam out there at all.
 
     The pattern is odd in x, which is the whole of what genderlessness needs
     (§6.1): reflecting it swaps every tab for a notch, so the same part mates
-    with its own twin.
+    with its own twin. That is why the count has to be even.
     """
     hw = config.body.half_width
-    root = config.body.rail_inner - root_inset(config)
     q = deck_column(config)
-    edges = [-hw, -root, -q, 0.0, q, root, hw]
+    edges = [-hw + i * q for i in range(config.connector.column_count + 1)]
     return [(edges[i], edges[i + 1], i % 2 == 0)
             for i in range(len(edges) - 1)]
 
@@ -406,9 +416,18 @@ def validate(config: TrackConfig = DEFAULT) -> None:
         )
     if deck_column(config) <= 2.0 * clear:
         raise ValueError(
-            f"a deck column is {deck_column(config):.3f} mm wide; the seams "
+            f"a column is {deck_column(config):.3f} mm wide; the seams "
             f"either side of it would meet and it would carry no lap"
         )
+    keep_out = root_inset(config)
+    for x_lo, _x_hi, _above in columns(config)[1:]:
+        if abs(abs(x_lo) - body.rail_inner) < keep_out:
+            raise ValueError(
+                f"a seam at x={x_lo:.2f} sits within {keep_out:.2f} mm of the "
+                f"rail root at {body.rail_inner:.2f}; the cut would graze the "
+                f"rail's concave corner instead of crossing it, which is what "
+                f"broke curve_45"
+            )
     if connector.lap_length + clear >= body.width_outer:
         raise ValueError("lap is longer than the piece is wide; joints would "
                          "overlap on a short part")

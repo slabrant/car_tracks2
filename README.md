@@ -49,26 +49,32 @@ junction and sweep terms too, is `docs/SPEC.md` §1.1.
       tab ├──────►                                        ◄──────┤ tab
 ```
 
-**At a port** — the joint. The section reads as six columns — two rails and
-four deck — split by one horizontal plane that lies **inside the deck**. Each
-column keeps the opposite side from its neighbour, so they alternate all the
-way across.
+**At a port** — the joint. The section is split into **two columns**, one per
+half of the road, by one horizontal plane that lies **inside the deck**. Each
+column keeps the opposite side of that plane from its neighbour.
 
 ```
-  ┌─────┬────────┬────────┬────────┬────────┬─────┐
-  │ TAB │        │  TAB   │        │  TAB   │     │   above the split
-  ├─────┤        ├────────┤        ├────────┤     │
-  │     │  TAB   │        │  TAB   │        │ TAB │   below the split
-  └─────┴────────┴────────┴────────┴────────┴─────┘
-   rail    deck     deck     deck     deck    rail
+  ┌───────────────────────┬───────────────────────┐
+  │         TAB           │                       │   above the split
+  ├───────────────────────┤                       │
+  │                       │         TAB           │   below the split
+  └───────────────────────┴───────────────────────┘
+    left half, rail and all   right half, rail and all
 
-   up      down     up       down     up      down
+           up                        down
 ```
 
-Six tabs, alternating the whole way across, so the two pieces interleave in
-narrow fingers and the vertical restraint is spread evenly over the width rather
-than bunched at either side. The pattern is odd in x, which is the whole of what
-genderlessness needs: reflect it and every tab becomes a notch.
+**A rail is not a column of its own** — it is the tall outer edge of the tooth
+it belongs to. That is the correction the first prints forced. Cutting a column
+per rail gave six fingers a port, and the two outermost came out 1.6 mm wide
+and 0.6 thick, carrying the detent ribs; they snapped off while two pieces were
+being pushed together. There is no seam near a rail root now because there is
+no seam out there at all.
+
+The pattern is odd in x, which is the whole of what genderlessness needs:
+reflect it and every tab becomes a notch. That is why the column count must be
+even. `Connector.column_count` is the dial — 4 is the same joint in narrower
+teeth.
 
 The plane being in the deck is the point. Split at mid-height instead and it
 misses the deck entirely, leaving two thin rail laps to resist a vertical load;
@@ -118,10 +124,10 @@ support turned over).
 **`trackcore/config.py`**, class `Connector`, lines 107–112:
 
 ```python
-lap_length: float = 3.0     # how far a tab reaches past the port plane
+lap_length: float = 6.0     # how far a tab reaches past the port plane
 fit_clearance: float = 0.15 # gap on every mating face
-detent_offset: float = 1.45 # where the click sits along the lap
-detent_height: float = 0.35 # how deep the click is
+detent_offset: float = 3.0  # where the click sits along the lap
+detent_height: float = 0.28 # how deep the click is
 detent_lead_angle_deg: float = 30.0   # shallow: pushing together
 detent_return_angle_deg: float = 60.0 # steep: pulling apart
 ```
@@ -129,7 +135,8 @@ detent_return_angle_deg: float = 60.0 # steep: pulling apart
 Change a number, regenerate, print. Nothing else needs touching — every part in
 the catalogue derives its joint from these.
 
-The class above it, `Body`, is the cross-section (24 × 4.7 mm U-channel). It is
+The class above it, `Body`, is the cross-section (24 × 4.7 mm U-channel, on a
+2.0 mm deck — see below). It is
 measured against real track and should not be changed casually.
 
 ---
@@ -199,6 +206,11 @@ or pass through its own entry, and 26 mm is not a grid module. A layout that
 goes through a loop comes out travelling the way it went in, a track's width
 across — the same bargain the 120° Y makes, for a different reason.
 
+It used to walk *diagonally* rather than sideways, which a printed pair made
+obvious: the flat leads either side of the turn advanced the track as well.
+`Loop.close` pulls that back over the turn, so the two ports now sit on one
+line and the only offset is the lateral one.
+
 Whether a car gets round it is a question this repository cannot answer. The
 speed at the top has to satisfy `v² ≥ gR`, so entering at the bottom needs
 `v ≥ sqrt(5gR)` — about 1.5 m/s at a 48 mm radius, which is a drop of 2.5
@@ -211,14 +223,12 @@ Two things open, both in `docs/SPEC.md` §11:
 - **Calibration.** `fit_clearance` was measured against the *previous*
   cross-section. The comb re-measures it, and measures `lap_length` for the
   first time.
-- **How short the joint should be.** It is 3.0 mm, halved from 6.0. Shorter
-  holds *harder*, not worse: a shorter tab stiffens faster than the deflection
-  it can take shrinks. The catalogue builds and validates at 3.0, but the
-  detent no longer has room to spare — `detent_spacing` had to come down to
-  0.30 to keep the far rib's buried base on the tab, and root strain at an
-  unchanged 0.35 mm detent is about four times what it was at 6.0. What limits
-  the joint has changed from print resolution of the detent to strain in the
-  tab, and which of the two really binds is what the comb measures.
+- **How short the joint should be.** It is back to 6.0 mm. It was halved to
+  3.0 and two printed loops settled it: the teeth broke while being pushed
+  together and the joint did not hold. Shortening only helps if the detent
+  shrinks with the square of the lap, and it was left at 0.35, which put root
+  strain at 3.6 % — past where PLA yields. The comb sweeps 5, 6 and 8 mm and
+  scales the detent to hold strain constant, which is what settles this.
 
 `v1.0-i-profile` tags the previous design, which had rails above *and* below the
 deck so a piece could be turned over. That symmetry is why nothing could lie flat

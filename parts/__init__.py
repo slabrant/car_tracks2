@@ -123,10 +123,15 @@ def loop(radius: float = GRID.half, drift: float = DEFAULT_LOOP_DRIFT,
     flat boxes. Without a flat lead they would bite into a section that has
     already pitched six degrees. `ramp` documents what that does.
 
+    `close` is the leads' own length, handed back to the loop: without it the
+    piece would advance `2 * lead` along the track as well as stepping across,
+    so every loop in a run walked diagonally. With it the two ports sit on one
+    line, one drift apart.
+
     Unlike every other part in the set, this one does not lie flat and does
     not tile. Both are noted in the README; neither is fixable by geometry.
     """
-    turn = Loop(radius=radius, drift=drift)
+    turn = Loop(radius=radius, drift=drift, close=2.0 * lead)
     return Path.chain(Line(lead), turn,
                       Line(lead, roll_offset=turn.twist))
 

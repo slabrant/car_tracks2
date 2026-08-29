@@ -45,8 +45,20 @@ CLEARANCES = [0.10, 0.15, 0.20]
 LAPS = [5.0, 6.0, 8.0]
 
 REFERENCE_LAP, REFERENCE_OFFSET, REFERENCE_DEFLECTION = 8.0, 4.0, 0.35
-"""The joint as built: 8 mm lap, detent 0.50, clearance 0.15 -> 0.35 mm of
-interference, about 0.8 % strain at the tab root."""
+"""The joint as it was when this strain was judged acceptable: 8 mm lap,
+detent 0.50, clearance 0.15 -> 0.35 mm of interference."""
+
+REFERENCE_LAMINA = 0.625
+"""Tab thickness that reference was measured on, mm: half of a 1.4 mm deck,
+less half a clearance.
+
+The deck is 2.0 mm now, so a tab is 0.925 and the same deflection would strain
+it half again as hard. Strain is what has to be held constant, not deflection,
+and it goes as `delta * h / a^2` — so the sweep scales with the section instead
+of carrying a number from a deck that no longer exists. Left as a literal here
+because it is history, not a dimension: it is what the 0.35 was measured
+against.
+"""
 
 COUPON_LENGTH = 32.0
 TALLY_DEPTH, TALLY_WIDTH, TALLY_HEIGHT, TALLY_PITCH = 0.6, 1.0, 2.0, 2.0
@@ -55,14 +67,18 @@ TALLY_DEPTH, TALLY_WIDTH, TALLY_HEIGHT, TALLY_PITCH = 0.6, 1.0, 2.0, 2.0
 def detent_for(lap: float, clearance: float) -> tuple[float, float]:
     """Detent height and offset for a lap, holding root strain constant.
 
-    The tab is a cantilever of length `(lap + clearance) + offset`, and strain
-    goes as `deflection / a²`, so the deflection a shorter tab may take falls
-    with `a²`. Interference is `detent_height - clearance`, hence the sum.
+    The tab is a cantilever of length `(lap + clearance) + offset` and
+    thickness `h`, and strain goes as `deflection * h / a²`. So the deflection
+    a tab may take falls with `a²` and with `1 / h`: a shorter tab and a
+    thicker one both want a shallower detent, for the same reason.
+    Interference is `detent_height - clearance`, hence the sum.
     """
     offset = REFERENCE_OFFSET * lap / REFERENCE_LAP
     reference_a = REFERENCE_LAP + DEFAULT.connector.fit_clearance + REFERENCE_OFFSET
     a = lap + clearance + offset
-    deflection = REFERENCE_DEFLECTION * (a / reference_a) ** 2
+    lamina = DEFAULT.body.deck_lamina - DEFAULT.connector.fit_clearance / 2.0
+    deflection = (REFERENCE_DEFLECTION * (a / reference_a) ** 2
+                  * (REFERENCE_LAMINA / lamina))
     return deflection + clearance, offset
 
 

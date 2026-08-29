@@ -31,7 +31,23 @@ class Body:
     width_outer: float = 24.0
     rail_thickness: float = 1.2
     rail_height_total: float = 4.7
-    deck_thickness: float = 1.4
+    deck_thickness: float = 2.0
+    """Raised from 1.4 after the first prints, and it is the joint that
+    raised it, not the road.
+
+    The joint splits the deck at mid-thickness, so every tab is half a deck
+    less half a clearance: at 1.4 that is **0.625 mm**, three layers at a
+    0.2 mm height, and the printed teeth were thin enough to flex apart, snap
+    off while being pushed together, and be hard to part from their supports.
+    At 2.0 a tab is 0.925 mm — 3.2 times the bending stiffness, since that
+    goes as the cube of thickness.
+
+    It is not free. The envelope is unchanged, so the rails keep less of it:
+    `guide_height` falls from 3.3 mm to 2.7, and the section carries 31 % more
+    material. Restoring the guide would mean a taller section — raise
+    `rail_height_total` to 5.3 — which is a change to what the track *is*,
+    not to how it joins, and has not been made here.
+    """
 
     @property
     def half_width(self) -> float:
@@ -111,63 +127,72 @@ class Connector:
     and is carried over: the mating faces it governs — the lap plane, the
     centreline, the tab tips — are mechanically unchanged by the section swap.
 
-    `lap_length` is **3.0**, halved from 6.0, which was itself down from 8.0.
-    `detent_offset` comes down with it, to 1.45 — just under mid-lap rather
-    than on it, because the far detent needs the last fraction of a millimetre
-    to keep its base on the tab. At the old 3.0 the detents would sit past the
-    end of a 3 mm tab entirely, and `connector.validate` refuses that.
+    `lap_length` is back to **6.0**. It was halved to 3.0 and the halving was
+    a mistake, which two printed loops settled: at 3.0 the teeth broke while
+    being pushed together and the joint did not hold.
 
-    Shortening the lap is mostly free, and up to a point it *helps*. The tab
-    stiffens as `1/a³` while the deflection it may take falls only as `a²`, so
-    retention scales as `1/a`: a shorter joint holds harder, and it gives the
-    shortest parts back the length the joint was eating.
+    The arithmetic that argued for it was not wrong, it was incomplete. A
+    shorter tab does stiffen as `1/a³` while the deflection it may take falls
+    only as `a²`, so retention scales as `1/a` and goes up — but only if the
+    detent shrinks with the lap. Strain at the tab root goes as `3·δ·h / 2a²`,
+    so it is `δ/a²` that has to be held, and halving the lap quarters the
+    detent a tab can carry. The detent was left at 0.35 and the root strain
+    went to 3.6 %, which is past where PLA yields. The tabs did what the
+    formula said they would.
 
-    What is not free is the detent, and at 3.0 it is what limits the design.
-    Strain at the tab root goes as `3·δ·h / 2a²`, so it is `δ/a²` that must be
-    held: halving the lap quarters the detent the tab can carry. Holding the
-    root strain it had at 6.0 would want `δ = 0.09` mm, which is below one
-    layer — no printer resolves it, and a detent that small is not a click.
-    So `detent_height` stays at 0.35 and the root strain is about **four
-    times** what it was.
-
-    That is a deliberate trade, and it inverts what used to constrain this
-    joint: down to 4.0 the limit was print resolution of the detent, and at 3.0
-    it is strain in the tab. Whether 0.35 mm at a 3 mm lap survives repeated
-    assembly is a question about the material, not the geometry, which is
-    exactly what the Phase 0 comb exists to answer — it sweeps lap against
-    detent height and the pairing is read off printed parts.
+    `detent_height` is **0.28**, down from 0.35, because the deck is thicker
+    now and strain goes with thickness too. At a 0.925 mm lamina and a 6 mm
+    lap that is 1.1 % — a little over the 0.9 % the joint ran at when it
+    worked, and about a third of what the 3 mm version was asking. It buys
+    roughly three times the retention force of the old thin-deck joint,
+    because a tab 1.48 times thicker is 3.2 times stiffer. The Phase 0 comb
+    is what settles it properly; these are predictions, not measurements.
     """
 
-    lap_length: float = 3.0
+    lap_length: float = 6.0
     fit_clearance: float = 0.15
-    detent_offset: float = 1.45
-    detent_height: float = 0.35
+    detent_offset: float = 3.0
+    detent_height: float = 0.28
     detent_lead_angle_deg: float = 30.0
     detent_return_angle_deg: float = 60.0
 
-    detent_spacing: float = 0.30
+    detent_spacing: float = 0.40
     """Gap between a rail's two detents, as a fraction of the lap.
 
-    There are two per rail because the six-column split (§6.1) leaves the two
-    rails **unlike**: the split plane sits in the deck, so one rail keeps the
-    thin sliver below it and the other keeps the tall part above. A groove has
-    to be cut into the material that receives it, and it can only be cut into
-    the tall one — sunk into the thin sliver it would leave a quarter of a
-    millimetre of floor.
+    There are two per rail because the split (§6.1) leaves the two rails
+    **unlike**: the split plane sits in the deck, so one rail keeps the shallow
+    part below it and the other keeps the tall part above. A groove has to be
+    cut into the material that receives it, and it can only be cut into the
+    tall one — sunk into the shallow one it would leave no floor.
 
     So each port carries its ribs on one rail and its grooves on the other,
     where a split clear of the rails could put one of each on both. That is
     half the engagements, and this is what buys them back: two ribs and two grooves,
     straddling `detent_offset`. Retention is unchanged; what changed is that
-    every groove is now in 4 mm of material rather than 0.7.
+    every groove is now in 3.6 mm of material rather than 1.
 
     Set to 0 for a single detent per rail, which is the older, weaker joint.
+    """
 
-    It is 0.30, down from 0.40, and at a 3 mm lap it is pinned from both sides:
-    wider and the far detent's buried base runs off the end of the tab, nar-
-    rower and the two clicks merge into one lump. `connector.validate` holds
-    both ends, and there is about a tenth of a millimetre of room between them.
-    That is the honest cost of halving the lap — see `lap_length`.
+    column_count: int = 2
+    """How many columns the section is split into, across its whole width.
+
+    **Two**, and the rails are not among them. Earlier versions cut a separate
+    column for each rail, so a port came out as six fingers and the two
+    outermost were rail plus a sliver of deck — 1.6 mm wide, 0.6 thick, and
+    the one carrying the detent ribs. They snapped off while two pieces were
+    being pushed together. Widening them helped and missed the point: a rail
+    has no business being a finger of its own.
+
+    So a column now runs from the outside of the rail to a seam in the deck,
+    and the rail is simply the tall part of the tooth it belongs to. At two
+    columns that is one tooth per half of the road, 12 mm wide, each with its
+    own rail along the outer edge and a single seam down the centreline —
+    which was there anyway, as the gap the two halves pass through.
+
+    Must be even, or the pattern is not odd in x and a port stops mating with
+    its own twin. Four is the same joint in narrower teeth; six is where this
+    started.
     """
 
     @property
@@ -190,6 +215,12 @@ class Connector:
             )
         if self.detent_spacing < 0.0:
             raise ValueError("detent_spacing must not be negative")
+        if self.column_count < 2 or self.column_count % 2:
+            raise ValueError(
+                f"column_count is {self.column_count}; it must be even and at "
+                f"least 2, or the column pattern is not odd in x and a port "
+                f"stops mating with its own twin (§6.1)"
+            )
         if min(self.detent_offsets) <= 0.0:
             raise ValueError(
                 "the near detent would sit behind the port plane; "

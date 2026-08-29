@@ -27,7 +27,7 @@ BANK_RAMP_FRACTION = 0.1
 """Bank eases in and out over this fraction of the arc at each end."""
 
 DEFAULT_PORT_CLEAR = (Connector().lap_length + Connector().fit_clearance + 2.0)
-"""How much of each end must stay flat, mm. 5.15 at default dimensions.
+"""How much of each end must stay flat, mm. 8.15 at default dimensions.
 
 **The cross-section must not roll inside a lap zone.** The connector's cut tools
 are flat boxes aligned to the port frame (§6.6); if the section has rolled by
@@ -327,13 +327,30 @@ class Loop:
     angle — atan(drift / 2*pi*radius), about five degrees at the defaults —
     and `Path` would refuse it, rightly.
 
-    `end_transform` is a pure sideways translation: a loop advances the track
-    not at all along its own direction, and moves it one drift across. A layout
-    that goes through a loop comes out travelling the way it went in, offset.
+    `end_transform` moves the track one drift across and `close` back along
+    it. With `close` set to the length of the leads either side, the piece as a
+    whole is a pure sideways step: a layout that goes through a loop comes out
+    on the line it went in on, one drift over. See `close`.
     """
 
     radius: float
     drift: float = DEFAULT_LOOP_DRIFT
+
+    close: float = 0.0
+    """How far to pull the exit back along the direction of travel, mm.
+
+    A loop advances the track not at all on its own, but the flat leads either
+    side of it do, and that showed up on a printed layout: two loops in a run
+    walked *diagonally* rather than sideways. Set this to the leads' total —
+    `2 * DEFAULT_PORT_CLEAR` — and the piece comes out purely offset across:
+    same line, one drift over.
+
+    Eased on the same smoothstep as the drift, so it costs nothing at the ends
+    where the ports are. It costs a little in the middle: the circle leans back
+    by `close` over its turn, about a sixth of its diameter at the defaults,
+    visible if you look for it and nothing a car can feel.
+    """
+
     min_radius: float = DEFAULT_MIN_RADIUS
     min_drift: float = Body().width_outer
     samples: int = 2001
@@ -374,31 +391,41 @@ class Loop:
     # Turn angle `u` runs 0 to 2*pi. In the loop's own plane the curve is the
     # circle (radius * sin u, radius * (1 - cos u)), which starts at the origin
     # heading +Y, is inverted at u = pi, and closes at u = 2*pi. Across the
-    # plane it steps `drift * smoothstep(u / 2*pi)`.
+    # plane it steps `drift * smoothstep(u / 2*pi)`, and along it the same
+    # smoothstep pulls back by `close`.
 
-    def _drift_at(self, u):
+    def _ease(self, u):
+        """Smoothstep in turn angle. Both the step across and the pull-back
+        along ride on it, so both leave the ends at zero rate."""
         t = u / (2.0 * math.pi)
-        return self.drift * t * t * (3.0 - 2.0 * t)
+        return t * t * (3.0 - 2.0 * t)
+
+    def _ease_d1(self, u):
+        t = u / (2.0 * math.pi)
+        return 6.0 * t * (1.0 - t) / (2.0 * math.pi)
+
+    def _ease_d2(self, u):
+        t = u / (2.0 * math.pi)
+        return (6.0 - 12.0 * t) / (2.0 * math.pi) ** 2
 
     def _point_at(self, u):
-        return np.stack([self._drift_at(u),
-                         self.radius * np.sin(u),
+        ease = self._ease(u)
+        return np.stack([self.drift * ease,
+                         self.radius * np.sin(u) - self.close * ease,
                          self.radius * (1.0 - np.cos(u))], axis=-1)
 
     def _d1(self, u):
         """dP/du. The smoothstep's derivative is zero at both ends, which is
         what keeps the end tangents exactly +Y."""
-        t = u / (2.0 * math.pi)
-        dx = self.drift * 6.0 * t * (1.0 - t) / (2.0 * math.pi)
-        return np.stack([dx,
-                         self.radius * np.cos(u),
+        rate = self._ease_d1(u)
+        return np.stack([self.drift * rate,
+                         self.radius * np.cos(u) - self.close * rate,
                          self.radius * np.sin(u)], axis=-1)
 
     def _d2(self, u):
-        t = u / (2.0 * math.pi)
-        ddx = self.drift * (6.0 - 12.0 * t) / (2.0 * math.pi) ** 2
-        return np.stack([ddx,
-                         -self.radius * np.sin(u),
+        rate = self._ease_d2(u)
+        return np.stack([self.drift * rate,
+                         -self.radius * np.sin(u) - self.close * rate,
                          self.radius * np.cos(u)], axis=-1)
 
     # -- the twist -------------------------------------------------------
@@ -411,6 +438,12 @@ class Loop:
         Square to the plane, so the drift is not banked into — the section
         stays level where the loop is level, which is what lets the exit port
         mate with an ordinary straight.
+
+        This is the *target*, not the result: a roll can only reach what is
+        square to the tangent, so `_accumulate_twist` projects it. The two
+        agree wherever the path lies in the circle's plane, and part company by
+        a few degrees in the middle of a loop that also pulls back — which is a
+        lean into the pull-back, and correct.
         """
         return np.stack([np.zeros_like(u), -np.sin(u), np.cos(u)], axis=-1)
 
@@ -440,7 +473,15 @@ class Loop:
         tangents = tangents / np.linalg.norm(tangents, axis=-1)[:, None]
         _across, up = rotation_minimising(points, tangents)
 
+        # The wanted direction has to be square to the tangent, or no roll can
+        # reach it and the measurement is of an angle that cannot be closed.
+        # With `close` set, the path leans back out of the circle's plane, so
+        # the plain radial is not square to it; what a roll can deliver is the
+        # radial's component perpendicular to the tangent, which is this.
         want = self._desired_up(u)
+        want = want - (want * tangents).sum(axis=-1)[:, None] * tangents
+        want = want / np.linalg.norm(want, axis=-1)[:, None]
+
         # signed angle about the tangent, from the frame's up to the wanted one
         sin = (np.cross(up, want) * tangents).sum(axis=-1)
         cos = (up * want).sum(axis=-1)
@@ -502,7 +543,7 @@ class Loop:
         return [self.length * i / n for i in range(n + 1)]
 
     def end_transform(self) -> np.ndarray:
-        return translation(self.drift, 0.0, 0.0)
+        return translation(self.drift, -self.close, 0.0)
 
 
 # --------------------------------------------------------------------------

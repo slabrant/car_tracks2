@@ -78,28 +78,51 @@ def test_the_two_ends_of_a_loop_pass_beside_each_other():
 # -- which way up ------------------------------------------------------------
 
 
+def test_the_section_is_always_square_to_the_path():
+    """Up is perpendicular to the tangent everywhere, which is what makes it a
+    section rather than a smear. Independent of any formula for where up
+    should point."""
+    frames = _frames()
+    for point, up, tangent in zip(frames.points, frames.up, frames.tangent):
+        assert abs(float(np.dot(up, tangent))) < 1e-9, (
+            f"at z={point[2]:.1f} the section is not square to the path"
+        )
+
+
 def test_the_channel_faces_the_loop_centre_all_the_way_round():
     """Up is the inward radial direction, so the car is held on the inside.
 
-    Checked against the loop's own centre rather than against a formula, so it
-    would catch a section that stayed upright while the path went over.
+    Measured against the plain circle's radial, `(0, -sin u, cos u)`, which is
+    where the channel would face if the loop only went round. It also pulls
+    back — `close` cancels the leads, see `Loop.close` — and a path that leans
+    carries its section with it, so the two part company by a few degrees in
+    the middle of the turn. That lean is correct: it is the bank a car
+    following this path would want. What matters is that it stays small and
+    that it is gone by the time the ports come round, which
+    `test_both_ports_come_out_level` measures exactly.
     """
     frames = _frames()
     path = PATHS["loop"]()
     lead, turn = path.primitives[0].length, path.primitives[1]
 
-    # the loop's axis runs along the drift, through the circle's centre: level
-    # with where the loop starts, one radius up
-    for point, up in zip(frames.points, frames.up):
+    worst = 0.0
+    for s_along, point, up in zip(frames.s, frames.points, frames.up):
         if point[2] < 1.0:            # the flat lead-ins, not the loop itself
             continue
-        inward = np.array([point[0], lead, turn.radius]) - point
-        inward[0] = 0.0               # along the axis; the drift is not a lean
-        inward = inward / np.linalg.norm(inward)
-        assert float(np.dot(up, inward)) > 0.99, (
-            f"at z={point[2]:.1f} the channel faces {np.round(up, 3)}, "
-            f"not inward {np.round(inward, 3)}"
+        u = 2.0 * math.pi * (float(s_along) - lead) / turn.length
+        radial = np.array([0.0, -math.sin(u), math.cos(u)])
+        lean = math.degrees(math.acos(min(1.0, abs(float(np.dot(up, radial))))))
+        worst = max(worst, lean)
+        assert float(np.dot(up, radial)) > 0.0, (
+            f"at z={point[2]:.1f} the channel faces {np.round(up, 3)}, which is "
+            f"away from the loop's centre, not toward it"
         )
+
+    assert worst < 12.0, f"the section leans {worst:.1f} deg out of the loop's plane"
+    assert worst > 1.0, (
+        "no lean at all would mean the pull-back is not in the geometry; "
+        "see Loop.close"
+    )
 
 
 def test_the_car_is_upside_down_over_the_top():
