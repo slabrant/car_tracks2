@@ -292,14 +292,15 @@ class Ramp:
         return translation(0.0, self.run, self.rise)
 
 
-LOOP_CLEAR = 2.0 * outer_margin(DEFAULT_CONFIG)
+LOOP_PORT_CLEAR = 2.0 * outer_margin(DEFAULT_CONFIG)
 """Air the two runs of a loop must leave each other, mm. 2.12 at the defaults.
 
-Not a style choice: it is twice how far a port's cut tools reach outboard of
-its own rail. See `connector.outer_margin` for why they reach out at all.
+Twice how far a port's cut tools reach outboard of its own rail — see
+`connector.outer_margin` for why they reach out at all. It is not a style
+choice and it is not negotiable; `DEFAULT_LOOP_DRIFT` has the whole argument.
 """
 
-DEFAULT_LOOP_DRIFT = Body().width_outer + LOOP_CLEAR
+DEFAULT_LOOP_DRIFT = Body().width_outer + LOOP_PORT_CLEAR
 """How far a loop steps sideways over its turn, mm. 26.12 at default dimensions.
 
 A vertical circle ends where it began. Swept as a solid, that is a piece
@@ -307,26 +308,31 @@ passing through itself at the bottom, and no care in the mesh code makes it
 printable. The loop therefore steps **across** the direction of travel as it
 goes round, so the run coming out passes beside the run going in.
 
-**The two runs cannot be welded into one wall, and it is worth writing down
-why, because it looks as though they could.** Stepping exactly one track width
-would put rail face on rail face, and a 2.4 mm wall bracing the base of a ring
-100 mm tall is plainly better than two 1.2 mm rails with air between them. What
-stops it is not the solver — a hair of overlap and a self-union resolve the
-geometry cleanly. It is that *the place the two runs meet is the two ports*.
-With the forward offset cancelled (`Loop.close`) both ports sit at the same
-station, one drift apart, and a port needs clear air outboard of its rail: its
-cut tools overshoot the rail by `outer_margin` so that curvature can never
-carry the body out past them. Welded, each port's tools would gouge a
-millimetre-deep trench down the other port's rail.
+**Why it is not one track width, which is what you would want.** Stepping
+exactly a width would put rail face on rail face and weld the two runs into a
+single 2.4 mm wall, bracing the base of a ring 100 mm tall where two 1.2 mm
+rails with air between them will fold. It was built, and it does not work, for
+a reason that is not obvious and is not the solver:
 
-So a loop can have its ports on one line, or its runs welded, not both. Welding
-would mean giving the forward offset back — about 16 mm, enough that the two
-lap zones no longer lie alongside each other — and then the weld would fall at
-the bottom of the circle, clear of both. That is a real option and it is not
-the one taken here.
+The loop comes down **parallel to its own entry**. The last stretch of the
+descending run and the first stretch of the ascending run are side by side,
+one drift apart, all the way to their respective ports — the drift is a single
+number, so wherever the two runs are abreast they are abreast by exactly that
+much. Welding them therefore welds them *through both lap zones*. And a port
+needs clear air outboard of its rail: its cut tools overshoot by
+`outer_margin`, so at a welded drift each port's tools reach 1.27 mm into the
+other run and gouge a trench down its rail — a trench §7 cannot see, because
+the result is still a manifold solid.
 
-`width + 2.0` was the value before this and the 2 mm was arbitrary. This is the
-same size and derived: exactly the room the connectors need.
+Giving back the forward offset does not help, which is the part that took a
+build to learn: it moves the *ports* apart along the track but not the runs,
+which stay abreast regardless. So a loop's runs cannot be welded to each other
+at all while the connector overshoots. Bracing the base wants a **separate
+brace** — a solid spanning this 2.12 mm gap somewhere clear of both lap zones,
+unioned in the way the detent ribs are — not a coincidence of the sweep.
+
+`width + 2.0` was the value before all this and the 2 mm was arbitrary. This is
+the same size and derived: exactly the room the connectors need.
 """
 
 
@@ -344,9 +350,10 @@ class Loop:
     Two things make it a helix rather than a circle.
 
     The **drift**: a closed circle would come back to its own start, so the
-    piece would pass through itself where it crosses. See `DEFAULT_LOOP_DRIFT`,
-    which is also where the case for *welding* the two runs together is set
-    out, and why it cannot be had at the same time as level ports.
+    piece would pass through itself where it crosses. A track width plus the
+    room two ports' cut tools need, which is more than it sounds and is the
+    whole of why the two runs cannot simply be welded together. See
+    `DEFAULT_LOOP_DRIFT`.
 
     The **easing**: the drift follows a smoothstep in turn angle rather than
     growing linearly, so its lateral rate is zero at both ends. That is what
@@ -380,7 +387,7 @@ class Loop:
     """
 
     min_radius: float = DEFAULT_MIN_RADIUS
-    min_drift: float = Body().width_outer + LOOP_CLEAR
+    min_drift: float = Body().width_outer + LOOP_PORT_CLEAR
     samples: int = 2001
 
     _u_table: np.ndarray = field(default=None, repr=False, compare=False)
@@ -395,8 +402,8 @@ class Loop:
             raise ValueError(
                 f"a loop drifting {self.drift:.2f} mm needs at least "
                 f"{self.min_drift:.2f} mm: a track {Body().width_outer:.1f} mm "
-                f"wide plus the room two ports' cut tools need to sit beside "
-                f"each other without cutting into one another"
+                f"wide, plus the room each port's cut tools need so they do not "
+                f"cut into the run passing alongside. See DEFAULT_LOOP_DRIFT."
             )
 
         u = np.linspace(0.0, 2.0 * math.pi, self.samples)

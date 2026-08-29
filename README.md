@@ -206,18 +206,20 @@ or pass through its own entry, and 26 mm is not a grid module. A layout that
 goes through a loop comes out travelling the way it went in, a track's width
 across — the same bargain the 120° Y makes, for a different reason.
 
-It used to walk *diagonally* rather than sideways, which a printed pair made
-obvious: the flat leads either side of the turn advanced the track as well.
-`Loop.close` pulls that back over the turn, so the two ports now sit on one
-line and the only offset is the lateral one.
+It walks *diagonally* rather than sideways, because the flat leads either side
+of the turn advance the track as well as stepping it across. `Loop.close`
+cancels that and is written and tested, but is not switched on: it buys a tidy
+offset and nothing else.
 
-That lateral step is 26.12 mm, and it is derived rather than picked: a track
-width plus twice how far a port's cut tools reach outboard of its own rail.
-With the ports on one line they sit side by side, so anything less and each
-one's tools would cut a trench down the other's rail. It is also why the two
-runs cannot be **welded** into a single wall at the bottom, which would brace
-the loop nicely — the place they meet is the ports. `DEFAULT_LOOP_DRIFT`
-records what welding would cost: giving the forward offset back.
+The lateral step is 26.12 mm, derived rather than picked — a track width plus
+twice how far a port's cut tools reach outboard of its own rail. It cannot be
+less, and that is why the two runs cannot be **welded** into a single wall,
+which would brace the loop's base nicely. The loop comes down parallel to its
+own entry, so wherever the two runs are abreast they are abreast by exactly the
+drift; weld them and they are welded *through both lap zones*, where each
+port's tools then gouge 1.27 mm into the other run's rail. Bracing the base
+wants a deliberate brace across that 2.12 mm gap, not a coincidence of the
+sweep. `DEFAULT_LOOP_DRIFT` has the whole argument.
 
 Whether a car gets round it is a question this repository cannot answer. The
 speed at the top has to satisfy `v² ≥ gR`, so entering at the bottom needs

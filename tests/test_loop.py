@@ -114,13 +114,11 @@ def test_the_channel_faces_the_loop_centre_all_the_way_round():
     """Up is the inward radial direction, so the car is held on the inside.
 
     Measured against the plain circle's radial, `(0, -sin u, cos u)`, which is
-    where the channel would face if the loop only went round. It also pulls
-    back — `close` cancels the leads, see `Loop.close` — and a path that leans
-    carries its section with it, so the two part company by a few degrees in
-    the middle of the turn. That lean is correct: it is the bank a car
-    following this path would want. What matters is that it stays small and
-    that it is gone by the time the ports come round, which
-    `test_both_ports_come_out_level` measures exactly.
+    where the channel faces when the loop only goes round — the default. A loop
+    that also pulls back (`Loop.close`) leans into the pull-back by a few
+    degrees in the middle of the turn, which is correct: it is the bank a car
+    following that path would want. Either way it must be gone by the time the
+    ports come round, which `test_both_ports_come_out_level` measures exactly.
     """
     frames = _frames()
     path = PATHS["loop"]()
@@ -139,10 +137,14 @@ def test_the_channel_faces_the_loop_centre_all_the_way_round():
             f"away from the loop's centre, not toward it"
         )
 
-    assert worst < 12.0, f"the section leans {worst:.1f} deg out of the loop's plane"
-    assert worst > 1.0, (
-        "no lean at all would mean the pull-back is not in the geometry; "
-        "see Loop.close"
+    # Any drifting loop is a helix, so the section leans a little out of the
+    # circle's plane however it is built — a quarter of a degree at the default
+    # drift. A loop that also pulls back (`Loop.close`) leans several degrees
+    # more, and that is the bank its path asks for.
+    limit = 12.0 if turn.close else 1.0
+    assert worst < limit, (
+        f"the section leans {worst:.4f} deg out of the loop's plane, and this "
+        f"loop {'pulls back' if turn.close else 'only drifts'}"
     )
 
 
