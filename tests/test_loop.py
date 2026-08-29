@@ -35,20 +35,41 @@ def _frames(name: str = "loop"):
 # -- it closes on itself without touching -----------------------------------
 
 
-def test_a_loop_that_drifts_less_than_the_track_is_wide_is_refused():
-    """The reason the drift exists at all.
+def test_a_loop_that_does_not_leave_its_ports_room_is_refused():
+    """The reason the drift exists, and the reason it is more than a width.
 
     A vertical circle ends where it began, so with no drift the piece crosses
-    its own entry at the bottom — not a joint, just two solids in the same
-    place. The guard is on the primitive because no later stage can see it:
-    a self-intersecting sweep still comes out manifold, since `sweep.py` builds
-    its topology from the station grid rather than from the geometry.
-    """
-    with pytest.raises(ValueError, match="pass through itself"):
-        Loop(radius=48.0, drift=BODY.width_outer)
+    its own entry — not a joint, just two solids in the same place. The guard
+    is on the primitive because no later stage can see it: a self-intersecting
+    sweep still comes out manifold, since `sweep.py` builds its topology from
+    the station grid rather than from the geometry, and §7 would pass a mesh
+    describing an impossible solid.
 
-    with pytest.raises(ValueError, match="pass through itself"):
-        Loop(radius=48.0, drift=0.1)
+    One track width is not enough either. With the forward offset cancelled
+    the two ports sit side by side, and each one's cut tools overshoot its rail
+    by `outer_margin`; at a drift of exactly a width they would cut into each
+    other. See `DEFAULT_LOOP_DRIFT`.
+    """
+    for bad in (0.1, BODY.width_outer, BODY.width_outer + 1.0):
+        with pytest.raises(ValueError, match="needs at least"):
+            Loop(radius=48.0, drift=bad)
+
+    Loop(radius=48.0, drift=DEFAULT_LOOP_DRIFT)
+
+
+def test_the_drift_is_exactly_what_two_ports_need_to_sit_side_by_side():
+    """Derived, not chosen. It was `width + 2.0` and the 2 mm was arbitrary."""
+    from trackcore.connector import outer_margin
+
+    assert DEFAULT_LOOP_DRIFT == pytest.approx(
+        BODY.width_outer + 2.0 * outer_margin(DEFAULT))
+
+    reach = BODY.half_width + outer_margin(DEFAULT)
+    other = DEFAULT_LOOP_DRIFT - BODY.half_width
+    assert other >= reach, (
+        f"a port's tools reach x={reach:.2f} and the other run's rail starts "
+        f"at x={other:.2f}; they would cut into each other"
+    )
 
 
 def test_the_two_ends_of_a_loop_pass_beside_each_other():

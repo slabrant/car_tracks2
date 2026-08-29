@@ -15,7 +15,9 @@ from typing import Protocol, Sequence
 
 import numpy as np
 
+from .config import DEFAULT as DEFAULT_CONFIG
 from .config import Body, Connector, Tolerances
+from .connector import outer_margin
 from .mesh import rotation_z, translation
 
 Vec3 = np.ndarray
@@ -290,17 +292,41 @@ class Ramp:
         return translation(0.0, self.run, self.rise)
 
 
-DEFAULT_LOOP_DRIFT = Body().width_outer + 2.0
-"""How far a loop steps sideways over its turn, mm. 26.0 at default dimensions.
+LOOP_CLEAR = 2.0 * outer_margin(DEFAULT_CONFIG)
+"""Air the two runs of a loop must leave each other, mm. 2.12 at the defaults.
 
-A vertical circle ends where it began. Swept as a solid that is not a joint,
-it is a piece passing through itself at the bottom, and no amount of care in
-the mesh code makes it printable. The loop therefore drifts **across** the
-direction of travel as it goes round, by more than the track is wide, so the
-run coming out passes beside the run going in with air between them.
+Not a style choice: it is twice how far a port's cut tools reach outboard of
+its own rail. See `connector.outer_margin` for why they reach out at all.
+"""
 
-Which is what a real loop does too, and for the same reason. Two millimetres
-of that clearance is air; the rest is track.
+DEFAULT_LOOP_DRIFT = Body().width_outer + LOOP_CLEAR
+"""How far a loop steps sideways over its turn, mm. 26.12 at default dimensions.
+
+A vertical circle ends where it began. Swept as a solid, that is a piece
+passing through itself at the bottom, and no care in the mesh code makes it
+printable. The loop therefore steps **across** the direction of travel as it
+goes round, so the run coming out passes beside the run going in.
+
+**The two runs cannot be welded into one wall, and it is worth writing down
+why, because it looks as though they could.** Stepping exactly one track width
+would put rail face on rail face, and a 2.4 mm wall bracing the base of a ring
+100 mm tall is plainly better than two 1.2 mm rails with air between them. What
+stops it is not the solver — a hair of overlap and a self-union resolve the
+geometry cleanly. It is that *the place the two runs meet is the two ports*.
+With the forward offset cancelled (`Loop.close`) both ports sit at the same
+station, one drift apart, and a port needs clear air outboard of its rail: its
+cut tools overshoot the rail by `outer_margin` so that curvature can never
+carry the body out past them. Welded, each port's tools would gouge a
+millimetre-deep trench down the other port's rail.
+
+So a loop can have its ports on one line, or its runs welded, not both. Welding
+would mean giving the forward offset back — about 16 mm, enough that the two
+lap zones no longer lie alongside each other — and then the weld would fall at
+the bottom of the circle, clear of both. That is a real option and it is not
+the one taken here.
+
+`width + 2.0` was the value before this and the 2 mm was arbitrary. This is the
+same size and derived: exactly the room the connectors need.
 """
 
 
@@ -318,7 +344,9 @@ class Loop:
     Two things make it a helix rather than a circle.
 
     The **drift**: a closed circle would come back to its own start, so the
-    piece would pass through itself where it crosses. See `DEFAULT_LOOP_DRIFT`.
+    piece would pass through itself where it crosses. See `DEFAULT_LOOP_DRIFT`,
+    which is also where the case for *welding* the two runs together is set
+    out, and why it cannot be had at the same time as level ports.
 
     The **easing**: the drift follows a smoothstep in turn angle rather than
     growing linearly, so its lateral rate is zero at both ends. That is what
@@ -352,7 +380,7 @@ class Loop:
     """
 
     min_radius: float = DEFAULT_MIN_RADIUS
-    min_drift: float = Body().width_outer
+    min_drift: float = Body().width_outer + LOOP_CLEAR
     samples: int = 2001
 
     _u_table: np.ndarray = field(default=None, repr=False, compare=False)
@@ -363,11 +391,12 @@ class Loop:
     def __post_init__(self) -> None:
         if self.radius <= 0:
             raise ValueError("Loop radius must be positive")
-        if self.drift <= self.min_drift:
+        if self.drift < self.min_drift:
             raise ValueError(
-                f"a loop drifting {self.drift:.1f} mm across a track "
-                f"{self.min_drift:.1f} mm wide would pass through itself where "
-                f"it crosses at the bottom"
+                f"a loop drifting {self.drift:.2f} mm needs at least "
+                f"{self.min_drift:.2f} mm: a track {Body().width_outer:.1f} mm "
+                f"wide plus the room two ports' cut tools need to sit beside "
+                f"each other without cutting into one another"
             )
 
         u = np.linspace(0.0, 2.0 * math.pi, self.samples)

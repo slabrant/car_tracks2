@@ -152,7 +152,7 @@ class Connector:
     lap_length: float = 6.0
     fit_clearance: float = 0.15
     detent_offset: float = 3.0
-    detent_height: float = 0.28
+    detent_height: float = 0.4
     detent_lead_angle_deg: float = 30.0
     detent_return_angle_deg: float = 60.0
 

@@ -127,7 +127,7 @@ support turned over).
 lap_length: float = 6.0     # how far a tab reaches past the port plane
 fit_clearance: float = 0.15 # gap on every mating face
 detent_offset: float = 3.0  # where the click sits along the lap
-detent_height: float = 0.28 # how deep the click is
+detent_height: float = 0.4  # how deep the click is
 detent_lead_angle_deg: float = 30.0   # shallow: pushing together
 detent_return_angle_deg: float = 60.0 # steep: pulling apart
 ```
@@ -210,6 +210,14 @@ It used to walk *diagonally* rather than sideways, which a printed pair made
 obvious: the flat leads either side of the turn advanced the track as well.
 `Loop.close` pulls that back over the turn, so the two ports now sit on one
 line and the only offset is the lateral one.
+
+That lateral step is 26.12 mm, and it is derived rather than picked: a track
+width plus twice how far a port's cut tools reach outboard of its own rail.
+With the ports on one line they sit side by side, so anything less and each
+one's tools would cut a trench down the other's rail. It is also why the two
+runs cannot be **welded** into a single wall at the bottom, which would brace
+the loop nicely — the place they meet is the ports. `DEFAULT_LOOP_DRIFT`
+records what welding would cost: giving the forward offset back.
 
 Whether a car gets round it is a question this repository cannot answer. The
 speed at the top has to satisfy `v² ≥ gR`, so entering at the bottom needs
