@@ -17,6 +17,7 @@ from typing import Callable
 from trackcore import (DEFAULT, Arc, Graft, Hub, Line, Loop, Path, Piece,
                        Ramp, TrackConfig, applied, port_matrices, sweep,
                        swept_with_ports)
+from trackcore.brace import brace
 from trackcore.connector import port_extension
 from trackcore.connector import validate as validate_connector
 from trackcore.mesh import translation
@@ -274,6 +275,40 @@ CATALOGUE: list[str] = ([n for n in sorted(PATHS) if n not in NOT_PARTS]
 
 
 
+def _braces(path: Path, config: TrackConfig) -> list:
+    """Every brace a path asks for, placed in the path's own frame.
+
+    The straight either side of a primitive bounds how far its brace may
+    reach: past the lead there is nothing alongside to tie to. See
+    `trackcore.brace`.
+    """
+    placed = []
+    primitives, transforms = path.primitives, path.transforms
+    for index, (prim, matrix) in enumerate(zip(primitives, transforms)):
+        neighbours = [primitives[k].length for k in (index - 1, index + 1)
+                      if 0 <= k < len(primitives)]
+        reach = min(neighbours) if neighbours else 0.0
+        placed += [mesh.transformed(matrix)
+                   for _label, mesh in brace(prim, config, reach)]
+    return placed
+
+
+def genus(name: str, config: TrackConfig = DEFAULT, **kwargs) -> int:
+    """How many holes a finished part has. §7 needs telling.
+
+    One for anything braced: tying two runs of the same swept body together
+    closes a ring, and a ring is a torus. Nothing else in the set has a hole,
+    and nothing should — an unexpected one is a tunnel a boolean bored by
+    accident, which is exactly what the rule is for.
+
+    Derived from the same `brace` call that builds the geometry, so the two
+    cannot disagree.
+    """
+    if name not in PATHS:
+        return 0
+    return len(_braces(PATHS[name](**kwargs), config))
+
+
 def port_frames(name: str, config: TrackConfig = DEFAULT, **kwargs) -> list:
     """The port frames of a part, in the order its connectors were applied."""
     if name in PATHS:
@@ -317,10 +352,16 @@ def build(name: str, config: TrackConfig = DEFAULT, connectors: bool = True,
     else:
         raise KeyError(f"unknown part {name!r}; have {CATALOGUE}")
 
+    # Anything that needs tying to itself says so, and says it as a solid to be
+    # unioned on at the end — after the port cuts, which is the only reason a
+    # `loop`'s brace survives the notches it runs straight past. It is
+    # structure, not joint, so a part built without connectors still gets it.
+    braces = _braces(path, config) if name in PATHS else []
+
     if not connectors:
-        return Piece(name=name, solids=solids)
+        return Piece(name=name, solids=solids, additions=tuple(braces))
 
     validate_connector(config)
     cuts, additions = applied(matrices, config)
     return Piece(name=name, solids=solids, cuts=tuple(cuts),
-                 additions=tuple(additions))
+                 additions=tuple(additions) + tuple(braces))

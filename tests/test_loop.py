@@ -35,8 +35,8 @@ def _frames(name: str = "loop"):
 # -- it closes on itself without touching -----------------------------------
 
 
-def test_a_loop_that_does_not_leave_its_ports_room_is_refused():
-    """The reason the drift exists, and the reason it is more than a width.
+def test_a_loop_whose_runs_would_touch_is_refused():
+    """The reason the drift exists at all.
 
     A vertical circle ends where it began, so with no drift the piece crosses
     its own entry — not a joint, just two solids in the same place. The guard
@@ -45,31 +45,73 @@ def test_a_loop_that_does_not_leave_its_ports_room_is_refused():
     the station grid rather than from the geometry, and §7 would pass a mesh
     describing an impossible solid.
 
-    One track width is not enough either. With the forward offset cancelled
-    the two ports sit side by side, and each one's cut tools overshoot its rail
-    by `outer_margin`; at a drift of exactly a width they would cut into each
-    other. See `DEFAULT_LOOP_DRIFT`.
+    Exactly one width is refused too. The two runs are meant to be *braced*
+    across a gap, not welded: `DEFAULT_LOOP_DRIFT` has the argument, and it
+    comes down to each port's cut tools reaching past their own rail.
     """
-    for bad in (0.1, BODY.width_outer, BODY.width_outer + 1.0):
-        with pytest.raises(ValueError, match="needs at least"):
+    for bad in (0.1, BODY.width_outer / 2.0, BODY.width_outer):
+        with pytest.raises(ValueError, match="braced across a gap"):
             Loop(radius=48.0, drift=bad)
 
     Loop(radius=48.0, drift=DEFAULT_LOOP_DRIFT)
 
 
-def test_the_drift_is_exactly_what_two_ports_need_to_sit_side_by_side():
-    """Derived, not chosen. It was `width + 2.0` and the 2 mm was arbitrary."""
-    from trackcore.connector import outer_margin
+def test_the_gap_the_brace_spans_is_the_drift_less_the_track():
+    """One millimetre, and the brace is sized from the same two numbers."""
+    from trackcore.brace import BITE, brace, spans
 
-    assert DEFAULT_LOOP_DRIFT == pytest.approx(
-        BODY.width_outer + 2.0 * outer_margin(DEFAULT))
+    assert spans() == pytest.approx(DEFAULT_LOOP_DRIFT - BODY.width_outer)
+    assert spans() == pytest.approx(1.0)
 
-    reach = BODY.half_width + outer_margin(DEFAULT)
-    other = DEFAULT_LOOP_DRIFT - BODY.half_width
-    assert other >= reach, (
-        f"a port's tools reach x={reach:.2f} and the other run's rail starts "
-        f"at x={other:.2f}; they would cut into each other"
+    turn = PATHS["loop"]().primitives[1]
+    (_label, block), = brace(turn, DEFAULT, reach=8.15)
+    lo, hi = block.bounds()
+    assert hi[0] - lo[0] == pytest.approx(spans() + 2.0 * BITE), (
+        "the brace must span the gap and reach into the rail either side"
     )
+    assert lo[0] < BODY.half_width < hi[0], "it should straddle this run's rail"
+    assert lo[0] < turn.drift - BODY.half_width < hi[0], "and the other's"
+
+
+def test_the_brace_is_added_after_the_cuts_so_the_notches_cannot_reach_it():
+    """The whole reason a brace works where a weld does not.
+
+    `Piece.stages` runs DIFFERENCE before the final UNION, so a solid added at
+    the end is untouched by the port tools — which is what lets the brace run
+    straight past both lap zones without being carved up.
+    """
+    from parts import build
+
+    piece = build("loop", DEFAULT)
+    order = [op for op, meshes in piece.stages() if meshes]
+    assert order[-1] == "UNION", order
+    assert "DIFFERENCE" in order[:-1], order
+
+    block = piece.additions[-1]
+    lo, hi = block.bounds()
+
+    # It runs the stretch between the ports, less a lap at each end: the brace
+    # reaches into the rail, and so does the mate's tab coming the other way.
+    # What is left is the margin `DEFAULT_PORT_CLEAR` keeps past the lap zone.
+    clear = 2.0 * (DEFAULT.connector.fit_clearance + 2.0)
+    assert hi[1] - lo[1] == pytest.approx(clear), (
+        f"the brace is {hi[1] - lo[1]:.2f} mm long, expected {clear:.2f}"
+    )
+
+
+def test_only_a_braced_part_has_a_hole_in_it():
+    """§7 proves genus, and every other part is genus 0.
+
+    A ring tied to itself at the bottom is a torus, and saying so has to be
+    deliberate: a rule that accepted any genus would not have caught the
+    tunnel a boolean once bored through every curve in the catalogue.
+    """
+    from parts import CATALOGUE, genus
+
+    assert genus("loop") == 1
+    for name in CATALOGUE:
+        if name != "loop":
+            assert genus(name) == 0, name
 
 
 def test_the_two_ends_of_a_loop_pass_beside_each_other():

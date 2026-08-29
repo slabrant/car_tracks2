@@ -15,9 +15,7 @@ from typing import Protocol, Sequence
 
 import numpy as np
 
-from .config import DEFAULT as DEFAULT_CONFIG
 from .config import Body, Connector, Tolerances
-from .connector import outer_margin
 from .mesh import rotation_z, translation
 
 Vec3 = np.ndarray
@@ -292,47 +290,38 @@ class Ramp:
         return translation(0.0, self.run, self.rise)
 
 
-LOOP_PORT_CLEAR = 2.0 * outer_margin(DEFAULT_CONFIG)
-"""Air the two runs of a loop must leave each other, mm. 2.12 at the defaults.
+LOOP_GAP = 1.0
+"""Air between the two runs of a loop where they pass, mm.
 
-Twice how far a port's cut tools reach outboard of its own rail — see
-`connector.outer_margin` for why they reach out at all. It is not a style
-choice and it is not negotiable; `DEFAULT_LOOP_DRIFT` has the whole argument.
+Close enough that a brace across it is a brace and not a bridge, wide enough
+that the two runs are still two runs and a slicer will not merge them into a
+blob on its own. It is spanned deliberately — see `trackcore.brace`.
 """
 
-DEFAULT_LOOP_DRIFT = Body().width_outer + LOOP_PORT_CLEAR
-"""How far a loop steps sideways over its turn, mm. 26.12 at default dimensions.
+DEFAULT_LOOP_DRIFT = Body().width_outer + LOOP_GAP
+"""How far a loop steps sideways over its turn, mm. 25.0 at default dimensions.
 
 A vertical circle ends where it began. Swept as a solid, that is a piece
 passing through itself at the bottom, and no care in the mesh code makes it
 printable. The loop therefore steps **across** the direction of travel as it
 goes round, so the run coming out passes beside the run going in.
 
-**Why it is not one track width, which is what you would want.** Stepping
-exactly a width would put rail face on rail face and weld the two runs into a
-single 2.4 mm wall, bracing the base of a ring 100 mm tall where two 1.2 mm
-rails with air between them will fold. It was built, and it does not work, for
-a reason that is not obvious and is not the solver:
+**The two runs are braced, not welded, and the difference is the connector.**
+Welding them — stepping exactly one track width, rail face on rail face —
+would make one 2.4 mm wall out of two 1.2 mm rails, which is what the base of
+a ring 100 mm tall wants. It cannot be had. The loop comes down parallel to
+its own entry, and the drift is a single number, so wherever the two runs are
+abreast they are abreast by exactly that much: welding them welds them
+*through both lap zones*, where each port's cut tools then reach past their own
+rail by `connector.outer_margin` and gouge a trench down the other run. §7
+passes that happily, a gouged solid being a manifold one.
 
-The loop comes down **parallel to its own entry**. The last stretch of the
-descending run and the first stretch of the ascending run are side by side,
-one drift apart, all the way to their respective ports — the drift is a single
-number, so wherever the two runs are abreast they are abreast by exactly that
-much. Welding them therefore welds them *through both lap zones*. And a port
-needs clear air outboard of its rail: its cut tools overshoot by
-`outer_margin`, so at a welded drift each port's tools reach 1.27 mm into the
-other run and gouge a trench down its rail — a trench §7 cannot see, because
-the result is still a manifold solid.
+Giving the forward offset back does not help — it moves the ports apart along
+the track and leaves the runs exactly as abreast as they were.
 
-Giving back the forward offset does not help, which is the part that took a
-build to learn: it moves the *ports* apart along the track but not the runs,
-which stay abreast regardless. So a loop's runs cannot be welded to each other
-at all while the connector overshoots. Bracing the base wants a **separate
-brace** — a solid spanning this 2.12 mm gap somewhere clear of both lap zones,
-unioned in the way the detent ribs are — not a coincidence of the sweep.
-
-`width + 2.0` was the value before all this and the 2 mm was arbitrary. This is
-the same size and derived: exactly the room the connectors need.
+So the runs are held a millimetre apart and tied with a brace, which is a
+solid unioned on *after* the port cuts have run and therefore cannot be cut by
+them. `trackcore.brace` has the geometry.
 """
 
 
@@ -350,10 +339,9 @@ class Loop:
     Two things make it a helix rather than a circle.
 
     The **drift**: a closed circle would come back to its own start, so the
-    piece would pass through itself where it crosses. A track width plus the
-    room two ports' cut tools need, which is more than it sounds and is the
-    whole of why the two runs cannot simply be welded together. See
-    `DEFAULT_LOOP_DRIFT`.
+    piece would pass through itself where it crosses. A track width plus a
+    millimetre, the millimetre being what `trackcore.brace` spans. See
+    `DEFAULT_LOOP_DRIFT` for why they are braced rather than welded.
 
     The **easing**: the drift follows a smoothstep in turn angle rather than
     growing linearly, so its lateral rate is zero at both ends. That is what
@@ -387,7 +375,7 @@ class Loop:
     """
 
     min_radius: float = DEFAULT_MIN_RADIUS
-    min_drift: float = Body().width_outer + LOOP_PORT_CLEAR
+    min_drift: float = Body().width_outer
     samples: int = 2001
 
     _u_table: np.ndarray = field(default=None, repr=False, compare=False)
@@ -398,12 +386,12 @@ class Loop:
     def __post_init__(self) -> None:
         if self.radius <= 0:
             raise ValueError("Loop radius must be positive")
-        if self.drift < self.min_drift:
+        if self.drift <= self.min_drift:
             raise ValueError(
-                f"a loop drifting {self.drift:.2f} mm needs at least "
-                f"{self.min_drift:.2f} mm: a track {Body().width_outer:.1f} mm "
-                f"wide, plus the room each port's cut tools need so they do not "
-                f"cut into the run passing alongside. See DEFAULT_LOOP_DRIFT."
+                f"a loop drifting {self.drift:.2f} mm across a track "
+                f"{self.min_drift:.1f} mm wide leaves its two runs touching or "
+                f"overlapping where they pass; they are braced across a gap, "
+                f"not welded. See DEFAULT_LOOP_DRIFT."
             )
 
         u = np.linspace(0.0, 2.0 * math.pi, self.samples)

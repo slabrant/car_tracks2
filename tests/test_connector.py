@@ -393,7 +393,11 @@ def test_every_port_of_every_part_carries_identical_geometry(name):
 
     matrices = port_frames(name)
     assert len(piece.cuts) == CUTS_PER_PORT * len(matrices)
-    assert len(piece.additions) == ADDS_PER_PORT * len(matrices)
+    # the connector's own additions come first; a brace, if the part has one,
+    # is unioned on after them and is not port geometry
+    from parts import genus
+    connector_adds = ADDS_PER_PORT * len(matrices)
+    assert len(piece.additions) == connector_adds + genus(name)
 
     for index, matrix in enumerate(matrices):
         inverse = np.linalg.inv(matrix)

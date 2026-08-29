@@ -9,6 +9,7 @@ and Construction B (junctions) in `hub.py`. Connectors are Phase 3.
 """
 
 from .config import DEFAULT, Body, Connector, Tolerances, TrackConfig
+from .brace import brace
 from .connector import MATE, applied, port_matrix
 from .edge_unit import PROFILE_VERTS, EdgeUnit, profile, profile_area
 from .graft import Graft, GraftInvalid, leg_length
@@ -32,6 +33,6 @@ __all__ = [
     "Path", "Line", "Arc", "Ramp", "Loop", "PathTooTightError",
     "PathDiscontinuous",
     "sweep", "swept_with_ports", "expected_volume", "port_matrices",
-    "applied", "port_matrix", "MATE",
+    "applied", "port_matrix", "MATE", "brace",
     "check", "signed_volume", "MeshInvalid",
 ]

@@ -132,13 +132,21 @@ def _shell_report(mesh: MeshData, vertices, edges, limit: int = 3) -> str:
 
 def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
           weld_tol: float = 1e-9,
-          components: int | None = 1) -> dict[str, float]:
+          components: int | None = 1, genus: int = 0) -> dict[str, float]:
     """Run all seven §7 checks. Raises MeshInvalid on the first failure.
 
     ``components`` is how many separate solids the caller expects, and it
     defaults to one because a *part* is one part. Pass ``None`` to accept any
     number — only a deliberately multi-body mesh, such as a full build plate,
     should do that.
+
+    ``genus`` is how many holes the caller expects each solid to have, and it
+    defaults to none because until the braced `loop` no part had one. A ring
+    with its two runs tied together at the bottom is a torus, and its Euler
+    characteristic is 0 rather than 2 — a fact about the shape, not a defect.
+    It has to be *declared* rather than inferred: the rule's whole value is
+    that it catches the tunnel a boolean bored through a curve by accident,
+    and a check that accepted any genus would have caught none of those.
 
     Rule 7 was added late and at some cost. §7 originally proved a mesh
     manifold, watertight, correctly wound and genus 0 *per component*, which a
@@ -213,10 +221,11 @@ def check(mesh: MeshData, *, name: str = "mesh", area_tol: float = 1e-9,
     f = len(mesh.faces)
     euler = v - e + f
     found = count_components(referenced, undirected.keys())
-    if euler != 2 * found:
+    expected = (2 - 2 * genus) * found
+    if euler != expected:
         problems.append(
-            f"Euler characteristic V-E+F = {euler}, expected {2 * found} "
-            f"for {found} genus-0 component(s)"
+            f"Euler characteristic V-E+F = {euler}, expected {expected} "
+            f"for {found} genus-{genus} component(s)"
         )
 
     # 7. one part, one solid

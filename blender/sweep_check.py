@@ -24,7 +24,7 @@ if REPO not in sys.path:
 from blender.boolean import apply_boolean  # noqa: E402
 from blender.build import from_object, reset_scene, to_object  # noqa: E402
 from blender.cleanup import clean  # noqa: E402
-from parts import CATALOGUE, build  # noqa: E402
+from parts import CATALOGUE, build, genus  # noqa: E402
 from trackcore import Connector, TrackConfig, check  # noqa: E402
 from trackcore.validate import MeshInvalid  # noqa: E402
 
@@ -57,7 +57,7 @@ def buildable(name: str, config: TrackConfig) -> str | None:
                 tool = to_object(mesh, f"{name}_{operation}_{index}", collection)
                 apply_boolean(target, tool, operation)
         clean(target)
-        check(from_object(target), name=name)
+        check(from_object(target), name=name, genus=genus(name, config))
         return None
     except (MeshInvalid, ValueError) as exc:
         return str(exc).split(";")[0]

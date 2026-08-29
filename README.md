@@ -111,7 +111,7 @@ support turned over).
 | `curve_90_tight` | tighter right angle | 48 mm radius |
 | `curve_90_banked` | leans into the turn | 10° |
 | `ramp` | up to bridge height | 192 mm run, 48 mm rise |
-| `loop` | a vertical loop; **needs supports, does not tile** | 48 mm radius, 26 mm sideways |
+| `loop` | a vertical loop; **needs supports, does not tile** | 48 mm radius, 25 mm sideways |
 | `x_junction` / `x_rounded` | four ways, square / filleted corners | |
 | `t_junction` / `t_rounded` | three ways, one straight through | |
 | `y_junction` / `y_rounded` | three ways at 120°, all alike | |
@@ -176,6 +176,7 @@ trackcore/     the geometry. Pure Python + numpy, never imports bpy.
   hub.py         Construction B: junctions
   graft.py       Construction C: supports
   connector.py   the joint, defined once and transformed to every port
+  brace.py       the block tying a loop's two runs together, §7 genus and all
   validate.py    the six mesh rules nothing may be exported without passing
   mesh.py        MeshData and primitives
 
@@ -211,15 +212,23 @@ of the turn advance the track as well as stepping it across. `Loop.close`
 cancels that and is written and tested, but is not switched on: it buys a tidy
 offset and nothing else.
 
-The lateral step is 26.12 mm, derived rather than picked — a track width plus
-twice how far a port's cut tools reach outboard of its own rail. It cannot be
-less, and that is why the two runs cannot be **welded** into a single wall,
-which would brace the loop's base nicely. The loop comes down parallel to its
-own entry, so wherever the two runs are abreast they are abreast by exactly the
-drift; weld them and they are welded *through both lap zones*, where each
-port's tools then gouge 1.27 mm into the other run's rail. Bracing the base
-wants a deliberate brace across that 2.12 mm gap, not a coincidence of the
-sweep. `DEFAULT_LOOP_DRIFT` has the whole argument.
+The lateral step is 25 mm — a track width and a millimetre — and the two runs
+are **braced** across that millimetre rather than welded. Welding them, by
+stepping exactly one width so rail meets rail, would be better bracing and
+cannot be had: the loop comes down parallel to its own entry, so wherever the
+runs are abreast they are abreast by exactly the drift, and welding them welds
+them *through both lap zones*, where each port's cut tools then gouge into the
+other run's rail. The brace is a block unioned on **after** the port cuts have
+run, so the notches it passes cannot touch it — the same ordering that lets the
+detent ribs be additions. It stops a lap short of each port plane, because a
+mate's tab reaches through that rail from the other side.
+
+That leaves it 4.3 mm long, which is `2 x (fit_clearance + 2.0)` — the margin
+`DEFAULT_PORT_CLEAR` keeps beyond each lap zone, and the only room in the piece
+where neither joint has a claim. `trackcore/brace.py` has the geometry, and
+`Connector.column_count`-style, it is the one part in the set with a hole
+through it: §7 now takes a declared genus, and `parts.genus` derives it from
+the same call that builds the brace.
 
 Whether a car gets round it is a question this repository cannot answer. The
 speed at the top has to satisfy `v² ≥ gR`, so entering at the bottom needs

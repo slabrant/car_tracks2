@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-from parts import CATALOGUE, HUBS, build
+from parts import CATALOGUE, HUBS, build, genus
 from trackcore import DEFAULT, check, profile_area, read_stl
 from trackcore.mesh import cross_section_area
 from trackcore.path import DEFAULT_LOOP_DRIFT
@@ -64,9 +64,13 @@ def test_every_part_builds_validates_and_exports(built):
 def test_the_exported_solid_passes_every_rule(built, name):
     """Including after the union, and after the float32 round trip."""
     mesh = read_stl(str(built / f"{name}.stl"))
-    stats = check(mesh, name=name)
+    # a braced part has a hole through it on purpose; §7 needs telling
+    stats = check(mesh, name=name, genus=genus(name))
     assert stats["components"] == 1.0, "a part must be one connected solid"
-    assert stats["euler"] == 2.0
+    assert stats["euler"] == 2.0 - 2.0 * genus(name), (
+        f"{name} declares genus {genus(name)}, so its Euler characteristic "
+        f"should be {2 - 2 * genus(name)}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(HUBS))
@@ -180,6 +184,13 @@ def test_a_finished_port_keeps_exactly_its_four_columns(built, name):
     through its deck and passed every rule. Area can.
     """
     from parts import port_frames
+
+    if genus(name):
+        pytest.skip(
+            "a braced part cannot be probed this way: the brace and the run "
+            "alongside are the same solid as the port, and no cutting plane "
+            "separates them. `blender/mate_check.py` measures its ports instead"
+        )
 
     mesh = read_stl(str(built / f"{name}.stl"))
 

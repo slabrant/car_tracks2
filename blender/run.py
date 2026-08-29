@@ -24,7 +24,7 @@ from blender.boolean import apply_boolean  # noqa: E402
 from blender.build import from_object, reset_scene, to_object  # noqa: E402
 from blender.cleanup import clean  # noqa: E402
 from blender.export import export  # noqa: E402
-from parts import CATALOGUE, build  # noqa: E402
+from parts import CATALOGUE, build, genus  # noqa: E402
 from trackcore import DEFAULT, check  # noqa: E402
 
 
@@ -44,7 +44,8 @@ def build_part(name: str, collection, connectors: bool = True, **kwargs):
 
     if piece.needs_boolean:
         clean(target)
-    stats = check(from_object(target), name=f"{name} (after booleans)")
+    stats = check(from_object(target), name=f"{name} (after booleans)",
+                  genus=genus(name, DEFAULT, **kwargs))
     note = (f"{len(piece.solids)}+{len(piece.cuts)}-{len(piece.additions)}+"
             if piece.needs_boolean else "swept")
 

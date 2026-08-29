@@ -13,6 +13,7 @@ import glob
 import os
 import sys
 
+from parts import genus
 from trackcore import check, read_stl
 from trackcore.validate import MeshInvalid
 
@@ -35,8 +36,12 @@ def main(argv: list[str]) -> int:
         mesh = read_stl(path)
         size = mesh.size()
         try:
+            # a part that is braced has a hole through it on purpose; ask
+            # the catalogue rather than guessing from the file
+            expect = 0 if plate else genus(os.path.splitext(
+                os.path.basename(path))[0])
             stats = check(mesh, name=os.path.basename(path),
-                          components=None if plate else 1)
+                          components=None if plate else 1, genus=expect)
             verdict = (f"OK   solids={int(stats['components'])} "
                        f"tris={int(stats['faces']):5d} "
                        f"vol={stats['volume_mm3']:9.2f} mm3")
